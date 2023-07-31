@@ -1,0 +1,352 @@
+---
+title: "WM_scRNA"
+output: html_document
+date: "2023-07-24"
+---
+
+```{r}
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+library(SoupX)
+library(celda)
+library(DropletUtils)
+library(glmGamPoi)
+options(future.globals.maxSize=10000000000000000)
+```
+Load data with SoupX
+SoupX is a package to estimate ambient mRNAs (the "soup") in single-cell RNA droplets by:
+1. calculating the profile of the soup
+2. estimating the fraction of UMIs are derived from the soup in each droplet
+3. produce a corrected count table
+
+The rho value = the contamination %...so rho of 0 = no contam and rho of 1 = 100% contamination
+For the output plots, the solid black curve shows something like the frequency of different estimates of rho and the red line indicates the peak, which reflects the rho estimate. 
+For the NYU data
+```{r}
+p01_190.data <- load10X("/Users/gagled01/morganLab/Waldenstroms/singlecell/data/01-190/outs")
+p04_003.data <- load10X("/Users/gagled01/morganLab/Waldenstroms/singlecell/data/04-003/outs")
+p01_076.data <- load10X("/Users/gagled01/morganLab/Waldenstroms/singlecell/data/01-076/outs")
+p01_115.data <- load10X("/Users/gagled01/morganLab/Waldenstroms/singlecell/data/01-115/outs")
+p01_131.data <- load10X("/Users/gagled01/morganLab/Waldenstroms/singlecell/data/01-131/outs")
+p01_163.data <- load10X("/Users/gagled01/morganLab/Waldenstroms/singlecell/data/01-163/outs")
+p04_006.data <- load10X("/Users/gagled01/morganLab/Waldenstroms/singlecell/data/04-006/outs")
+
+# Estimate the contamination fraction
+p01_190.data <- autoEstCont(p01_190.data)
+p04_003.data <- autoEstCont(p04_003.data)
+p01_076.data <- autoEstCont(p01_076.data, tfidfMin = 0.75)
+p01_115.data <- autoEstCont(p01_115.data)
+p01_131.data <- autoEstCont(p01_131.data)
+p01_163.data <- autoEstCont(p01_163.data, tfidfMin = 0.75)
+p04_006.data <- autoEstCont(p04_006.data, tfidfMin = 0.7)
+
+# Remove ambient RNA
+p01_190_rna <- adjustCounts(p01_190.data) # Will be same dimensions because SoupX is only correcting for ambient RNA, not removing contaminated cells
+p04_003_rna <- adjustCounts(p04_003.data)
+p01_076_rna <- adjustCounts(p01_076.data)
+p01_115_rna <- adjustCounts(p01_115.data)
+p01_131_rna <- adjustCounts(p01_131.data)
+p01_163_rna <- adjustCounts(p01_163.data)
+p04_006_rna <- adjustCounts(p04_006.data)
+
+# Convert to Seurat
+p01_190_srat <- CreateSeuratObject(p01_190_rna, min.cells = 3, min.features = 200)
+p04_003_srat <- CreateSeuratObject(p04_003_rna, min.cells = 3, min.features = 200)
+p01_076_srat <- CreateSeuratObject(p01_076_rna, min.cells = 3, min.features = 200)
+p01_115_srat <- CreateSeuratObject(p01_115_rna, min.cells = 3, min.features = 200)
+p01_131_srat <- CreateSeuratObject(p01_131_rna, min.cells = 3, min.features = 200)
+p01_163_srat <- CreateSeuratObject(p01_163_rna, min.cells = 3, min.features = 200)
+p04_006_srat <- CreateSeuratObject(p04_006_rna, min.cells = 3, min.features = 200)
+
+rm(p01_190.data, p01_076.data, p04_003.data, p01_115.data, p01_131.data, p01_163.data, p04_006.data,
+   p01_190_rna, p01_076_rna, p04_003_rna, p01_115_rna, p01_131_rna, p01_163_rna, p04_006_rna)
+```
+# Basic metadata annotation
+```{r}
+p01_190_srat[["patient"]] <- "01-190"
+p04_003_srat[["patient"]] <- "04-003"
+p01_076_srat[["patient"]] <- "01-076"
+p01_115_srat[["patient"]] <- "01-115"
+p01_131_srat[["patient"]] <- "01-131"
+p01_163_srat[["patient"]] <- "01-163"
+p04_006_srat[["patient"]] <- "04-006"
+
+p01_190_srat[["batch"]] <- "1"
+p04_003_srat[["batch"]] <- "1"
+p01_076_srat[["batch"]] <- "2"
+p01_115_srat[["batch"]] <- "2"
+p01_131_srat[["batch"]] <- "2"
+p01_163_srat[["batch"]] <- "2"
+p04_006_srat[["batch"]] <- "2"
+
+p01_190_srat[["source"]] <- "NYU"
+p04_003_srat[["source"]] <- "NYU"
+p01_076_srat[["source"]] <- "NYU"
+p01_115_srat[["source"]] <- "NYU"
+p01_131_srat[["source"]] <- "NYU"
+p01_163_srat[["source"]] <- "NYU"
+p04_006_srat[["source"]] <- "NYU"
+```
+# Getting % mitochondrial transcripts
+```{r}
+p01_190_srat[["percent.mt"]] <- PercentageFeatureSet(p01_190_srat, pattern = "^MT-")
+p04_003_srat[["percent.mt"]] <- PercentageFeatureSet(p04_003_srat, pattern = "^MT-")
+p01_076_srat[["percent.mt"]] <- PercentageFeatureSet(p01_076_srat, pattern = "^MT-")
+p01_115_srat[["percent.mt"]] <- PercentageFeatureSet(p01_115_srat, pattern = "^MT-")
+p01_131_srat[["percent.mt"]] <- PercentageFeatureSet(p01_131_srat, pattern = "^MT-")
+p01_163_srat[["percent.mt"]] <- PercentageFeatureSet(p01_163_srat, pattern = "^MT-")
+p04_006_srat[["percent.mt"]] <- PercentageFeatureSet(p04_006_srat, pattern = "^MT-")
+```
+# Plot function
+```{r}
+qc_plots <- function(seurat.object, min_umi, min_gene, perc_mito) {
+  patient <- seurat.object@meta.data$patient[1] # Get patient label for plot
+  p1 <- VlnPlot(seurat.object, features = "nCount_RNA", log = TRUE, pt.size = 0) + geom_hline(yintercept = min_umi, # UMI plot
+                                                                                              color = "black", 
+                                                                                              linewidth = 1,
+                                                                                              linetype = "dashed") + NoLegend()
+  p2 <- VlnPlot(seurat.object, features = "nFeature_RNA", log = TRUE, pt.size = 0) + geom_hline(yintercept = min_gene, # Gene count
+                                                                                              color = "black",
+                                                                                              linewidth = 1,
+                                                                                              linetype = "dashed") + NoLegend()
+  p3 <- VlnPlot(seurat.object, features = "percent.mt", log = TRUE, pt.size = 0) + geom_hline(yintercept = perc_mito, # % mito 
+                                                                                              color = "black",
+                                                                                              linewidth = 1,
+                                                                                              linetype = "dashed") + NoLegend()
+  qc.patch <- p1 | p2 | p3
+  ggsave(paste0("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/", patient, "_BasicQC_Metrics.png"), height = 4, width = 8)
+}
+```
+# QC filtering function
+```{r}
+qc_filter <- function(seurat.object, umi_upper, umi_lower, gene_upper, gene_lower, mito_filter) {
+  patient <- seurat.object@meta.data$patient[1] # Get patient label for plot
+  cells.before <- ncol(seurat.object)
+  
+  seurat.filtered <- subset(x = seurat.object, 
+                            subset = nCount_RNA > umi_lower &
+                              nCount_RNA < umi_upper &
+                              nFeature_RNA > gene_lower &
+                              nFeature_RNA < gene_upper &
+                              percent.mt < mito_filter
+                            )
+  cells.after <- ncol(seurat.filtered)
+  
+  print(paste0(patient, " cell count before = ", cells.before, " and after = ", cells.after))
+  print(paste0(patient, " cell loss = ", round(1 - cells.after/cells.before, 3)*100, "%"))
+  
+  return(seurat.filtered)
+}
+```
+# Generate plots
+```{r}
+qc_plots(p01_190_srat, 300, 200, 20)
+qc_plots(p04_003_srat, 300, 200, 20)
+qc_plots(p01_076_srat, 300, 200, 20)
+qc_plots(p01_115_srat, 300, 200, 20)
+qc_plots(p01_131_srat, 300, 200, 20)
+qc_plots(p01_163_srat, 300, 200, 20)
+qc_plots(p04_006_srat, 300, 200, 20)
+```
+# Filtering
+```{r}
+p01_190_filtered <- qc_filter(p01_190_srat, 25000, 300, 7500, 200, 20)
+p04_003_filtered <- qc_filter(p04_003_srat, 25000, 300, 7500, 200, 20)
+p01_076_filtered <- qc_filter(p01_076_srat, 25000, 300, 7500, 200, 20)
+p01_115_filtered <- qc_filter(p01_115_srat, 25000, 300, 7500, 200, 20)
+p01_131_filtered <- qc_filter(p01_131_srat, 25000, 300, 7500, 200, 20)
+p01_163_filtered <- qc_filter(p01_163_srat, 25000, 300, 7500, 200, 20)
+p04_006_filtered <- qc_filter(p04_006_srat, 25000, 300, 7500, 200, 20)
+
+rm(p01_190_srat, p04_003_srat, p01_076_srat, p01_115_srat, p01_131_srat, p01_163_srat, p04_006_srat)
+```
+Trying decontX instead...
+```{r}
+# temp <- read10xCounts(samples = "/Users/gagled01/morganLab/Waldenstroms/singlecell/data/01-131/outs/filtered_feature_bc_matrix")
+# temp.raw <- read10xCounts(samples = "/Users/gagled01/morganLab/Waldenstroms/singlecell/data/01-131/outs/raw_feature_bc_matrix")
+# 
+# temp <- decontX(temp, background = temp.raw)
+# 
+# umap <- reducedDim(temp, "decontX_UMAP")
+# plotDimReduceCluster(x = temp$decontX_clusters,
+#     dim1 = umap[, 1], dim2 = umap[, 2])
+# 
+# plotDecontXContamination(temp)
+# table(temp$decontX_contamination > 0.2)
+# table(temp$decontX_contamination > 0.2)[2]/sum(table(temp$decontX_contamination > 0.2)) # How much contam? Considering > 20% contam to be unacceptable
+# 
+# # Not raw data
+# temp.notraw <- decontX(temp)
+# umap.notraw <- reducedDim(temp.notraw, "decontX_UMAP")
+# plotDimReduceCluster(x = temp.notraw$decontX_clusters,
+#     dim1 = umap[, 1], dim2 = umap[, 2])
+# table(temp.notraw$decontX_contamination > 0.2)
+# table(temp.notraw$decontX_contamination > 0.2)[2]/sum(table(temp.notraw$decontX_contamination > 0.2)) # How much contam?
+
+# Not conclusive...not sure
+```
+### STANFORD SCRNA DATA ###
+
+Not doing ambient RNA removal because:
+1. they don't supply cellranger outputs (so no clustering to use for SoupX)
+2. they don't provide raw + filtered feature matrices, just raw
+```{r}
+tonsil.1a.data <- Read10X('/Users/gagled01/morganLab/Waldenstroms/singlecell/data/GSE165860_RAW/scRNA/tonsil_1a_raw_feature_bc_matrix')
+tonsil.1b.data <- Read10X('/Users/gagled01/morganLab/Waldenstroms/singlecell/data/GSE165860_RAW/scRNA/tonsil_1b_raw_feature_bc_matrix')
+tonsil.2a.data <- Read10X('/Users/gagled01/morganLab/Waldenstroms/singlecell/data/GSE165860_RAW/scRNA/tonsil_2a_raw_feature_bc_matrix')
+tonsil.2b.data <- Read10X('/Users/gagled01/morganLab/Waldenstroms/singlecell/data/GSE165860_RAW/scRNA/tonsil_2b_raw_feature_bc_matrix')
+tonsil.3a.data <- Read10X('/Users/gagled01/morganLab/Waldenstroms/singlecell/data/GSE165860_RAW/scRNA/tonsil_3a_raw_feature_bc_matrix')
+tonsil.3b.data <- Read10X('/Users/gagled01/morganLab/Waldenstroms/singlecell/data/GSE165860_RAW/scRNA/tonsil_3b_raw_feature_bc_matrix')
+```
+# Create Seurat objects
+```{r}
+tonsil.1a <- CreateSeuratObject(counts = tonsil.1a.data$`Gene Expression`, min.cells=3, min.features=200)
+tonsil.1b <- CreateSeuratObject(counts = tonsil.1b.data$`Gene Expression`, min.cells=3, min.features=200)
+tonsil.2a <- CreateSeuratObject(counts = tonsil.2a.data$`Gene Expression`, min.cells=3, min.features=200)
+tonsil.2b <- CreateSeuratObject(counts = tonsil.2b.data$`Gene Expression`, min.cells=3, min.features=200)
+tonsil.3a <- CreateSeuratObject(counts = tonsil.3a.data$`Gene Expression`, min.cells=3, min.features=200)
+tonsil.3b <- CreateSeuratObject(counts = tonsil.3b.data$`Gene Expression`, min.cells=3, min.features=200)
+```
+# Correcting matrix size differences due to SeuratObject filtering
+```{r}
+tonsil.1a.diff <- setdiff(colnames(tonsil.1a.data$`Antibody Capture`), colnames(tonsil.1a)) # Getting the unmatched cell
+tonsil.1b.diff <- setdiff(colnames(tonsil.1b.data$`Antibody Capture`), colnames(tonsil.1b)) # Getting the unmatched cell
+tonsil.2a.diff <- setdiff(colnames(tonsil.2a.data$`Antibody Capture`), colnames(tonsil.2a)) # Getting the unmatched cell
+tonsil.2b.diff <- setdiff(colnames(tonsil.2b.data$`Antibody Capture`), colnames(tonsil.2b)) # Getting the unmatched cell
+tonsil.3a.diff <- setdiff(colnames(tonsil.3a.data$`Antibody Capture`), colnames(tonsil.3a)) # Getting the unmatched cell
+tonsil.3b.diff <- setdiff(colnames(tonsil.3b.data$`Antibody Capture`), colnames(tonsil.3b)) # Getting the unmatched cell
+
+tonsil.1a.data$`Antibody Capture` <- tonsil.1a.data$`Antibody Capture`[, !colnames(tonsil.1a.data$`Antibody Capture`) %in% tonsil.1a.diff]
+tonsil.1b.data$`Antibody Capture` <- tonsil.1b.data$`Antibody Capture`[, !colnames(tonsil.1b.data$`Antibody Capture`) %in% tonsil.1b.diff]
+tonsil.2a.data$`Antibody Capture` <- tonsil.2a.data$`Antibody Capture`[, !colnames(tonsil.2a.data$`Antibody Capture`) %in% tonsil.2a.diff]
+tonsil.2b.data$`Antibody Capture` <- tonsil.2b.data$`Antibody Capture`[, !colnames(tonsil.2b.data$`Antibody Capture`) %in% tonsil.2b.diff]
+tonsil.3a.data$`Antibody Capture` <- tonsil.3a.data$`Antibody Capture`[, !colnames(tonsil.3a.data$`Antibody Capture`) %in% tonsil.3a.diff]
+tonsil.3b.data$`Antibody Capture` <- tonsil.3b.data$`Antibody Capture`[, !colnames(tonsil.3b.data$`Antibody Capture`) %in% tonsil.3b.diff]
+```
+# Add ADT info
+```{r}
+tonsil.1a[["ADT"]] <- CreateAssayObject(counts = tonsil.1a.data$`Antibody Capture`, colnames = (x = tonsil.1a))
+tonsil.1b[["ADT"]] <- CreateAssayObject(counts = tonsil.1b.data$`Antibody Capture`, colnames = (x = tonsil.1b))
+tonsil.2a[["ADT"]] <- CreateAssayObject(counts = tonsil.2a.data$`Antibody Capture`, colnames = (x = tonsil.2a))
+tonsil.2b[["ADT"]] <- CreateAssayObject(counts = tonsil.2b.data$`Antibody Capture`, colnames = (x = tonsil.2b))
+tonsil.3a[["ADT"]] <- CreateAssayObject(counts = tonsil.3a.data$`Antibody Capture`, colnames = (x = tonsil.3a))
+tonsil.3b[["ADT"]] <- CreateAssayObject(counts = tonsil.3b.data$`Antibody Capture`, colnames = (x = tonsil.3b))
+
+rm(tonsil.1a.data, tonsil.1b.data, tonsil.2a.data, tonsil.2b.data, tonsil.3a.data, tonsil.3b.data)
+```
+# Basic metadata annotation
+```{r}
+tonsil.1a[["patient"]] <- "tonsil1"
+tonsil.1b[["patient"]] <- "tonsil1"
+tonsil.2a[["patient"]] <- "tonsil2"
+tonsil.2b[["patient"]] <- "tonsil2"
+tonsil.3a[["patient"]] <- "tonsil3"
+tonsil.3b[["patient"]] <- "tonsil3"
+
+tonsil.1a[["batch"]] <- "tonsil1"
+tonsil.1b[["batch"]] <- "tonsil1"
+tonsil.2a[["batch"]] <- "tonsil2"
+tonsil.2b[["batch"]] <- "tonsil2"
+tonsil.3a[["batch"]] <- "tonsil3"
+tonsil.3b[["batch"]] <- "tonsil3"
+
+tonsil.1a[["source"]] <- "Stanford"
+tonsil.1b[["source"]] <- "Stanford"
+tonsil.2a[["source"]] <- "Stanford"
+tonsil.2b[["source"]] <- "Stanford"
+tonsil.3a[["source"]] <- "Stanford"
+tonsil.3b[["source"]] <- "Stanford"
+```
+# Getting % mitochondrial transcripts
+```{r}
+tonsil.1a[["percent.mt"]] <- PercentageFeatureSet(tonsil.1a, pattern = "^MT-")
+tonsil.1b[["percent.mt"]] <- PercentageFeatureSet(tonsil.1b, pattern = "^MT-")
+tonsil.2a[["percent.mt"]] <- PercentageFeatureSet(tonsil.2a, pattern = "^MT-")
+tonsil.2b[["percent.mt"]] <- PercentageFeatureSet(tonsil.2b, pattern = "^MT-")
+tonsil.3a[["percent.mt"]] <- PercentageFeatureSet(tonsil.3a, pattern = "^MT-")
+tonsil.3b[["percent.mt"]] <- PercentageFeatureSet(tonsil.3b, pattern = "^MT-")
+```
+# QC plots
+```{r}
+qc_plots(tonsil.1a, 300, 200, 20)
+qc_plots(tonsil.1b, 300, 200, 20)
+qc_plots(tonsil.2a, 300, 200, 20)
+qc_plots(tonsil.2b, 300, 200, 20)
+qc_plots(tonsil.3a, 300, 200, 20)
+qc_plots(tonsil.3b, 300, 200, 20)
+```
+# They filtered this data by:
+- number of genes between 200 and 7500
+- % mito between 0 - 20
+- ADTs less than 4000
+# QC filtering function for Stanford (ADTs included)
+```{r}
+qc_filter_adts <- function(seurat.object, gene_upper, gene_lower, mito_filter, adt_filter) {
+  patient <- seurat.object@meta.data$patient[1] # Get patient label for plot
+  cells.before <- ncol(seurat.object)
+  
+  seurat.filtered <- subset(x = seurat.object, 
+                            subset = nFeature_RNA > gene_lower &
+                              nFeature_RNA < gene_upper &
+                              percent.mt < mito_filter &
+                              nFeature_ADT < 4000
+                            )
+  cells.after <- ncol(seurat.filtered)
+  
+  print(paste0(patient, " cell count before = ", cells.before, " and after = ", cells.after))
+  print(paste0(patient, " cell loss = ", round(1 - cells.after/cells.before, 3)*100, "%"))
+  
+  return(seurat.filtered)
+}
+```
+# Filter Stanford
+```{r}
+tonsil.1a.filtered <- qc_filter_adts(tonsil.1a, 7500, 200, 20, 4000)
+tonsil.1b.filtered <- qc_filter_adts(tonsil.1b, 7500, 200, 20, 4000)
+tonsil.2a.filtered <- qc_filter_adts(tonsil.2a, 7500, 200, 20, 4000)
+tonsil.2b.filtered <- qc_filter_adts(tonsil.2b, 7500, 200, 20, 4000)
+tonsil.3a.filtered <- qc_filter_adts(tonsil.3a, 7500, 200, 20, 4000)
+tonsil.3b.filtered <- qc_filter_adts(tonsil.3b, 7500, 200, 20, 4000)
+
+rm(tonsil.1a, tonsil.1b, tonsil.2a, tonsil.2b, tonsil.3a, tonsil.3b)
+```
+# Merging data into disease and control for SCTransform integration
+```{r}
+wm.rna <- merge(p01_190_filtered, 
+                c(p04_003_filtered, 
+                p01_076_filtered, 
+                p01_115_filtered, 
+                p01_131_filtered, 
+                p01_163_filtered, 
+                p04_006_filtered)) 
+
+ctrl.rna <- merge(tonsil.1a.filtered,
+                  c(tonsil.1b.filtered,
+                  tonsil.2a.filtered,
+                  tonsil.2b.filtered,
+                  tonsil.3a.filtered,
+                  tonsil.3b.filtered))
+
+rm(p01_190_filtered, p04_003_filtered, p01_076_filtered, p01_115_filtered, p01_131_filtered, p01_163_filtered, p04_006_filtered)
+rm(tonsil.1a.filtered, tonsil.1b.filtered, tonsil.2a.filtered, tonsil.2b.filtered, tonsil.3a.filtered, tonsil.3b.filtered)
+```
+# SCTransforms
+```{r}
+ctrl.rna <- SCTransform(ctrl.rna, assay = "RNA", new.assay.name = "SCT", vst.flavor = "v2", ncells = 5000, vars.to.regress = "batch", method = "glmGamPoi") %>%
+  RunPCA(npcs = 20) %>%
+  RunUMAP(reduction = "pca", dims = 1:20) %>%
+  FindNeighbors(reduction = "pca", dims = 1:20) %>%
+  FindClusters(resolution = 0.7)
+
+DimPlot(ctrl.rna)
+
+wm.rna <- SCTransform(wm.rna, assay = "RNA", new.assay.name = "SCT", vst.flavor = "v2", ncells = 5000, vars.to.regress = "batch", method = "glmGamPoi", verbose = F) %>%
+  RunPCA(npcs = 20)
+
+saveRDS(wm.rna, "/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/WM_SCTransformed.rds")
+saveRDS(ctrl.rna, "/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/Ctrl_SCTransformed.rds")
+
+```
+
