@@ -88,6 +88,14 @@ p01_115_srat[["source"]] <- "NYU"
 p01_131_srat[["source"]] <- "NYU"
 p01_163_srat[["source"]] <- "NYU"
 p04_006_srat[["source"]] <- "NYU"
+
+p01_190_srat[["case.control"]] <- "WM"
+p04_003_srat[["case.control"]] <- "WM"
+p01_076_srat[["case.control"]] <- "WM"
+p01_115_srat[["case.control"]] <- "WM"
+p01_131_srat[["case.control"]] <- "WM"
+p01_163_srat[["case.control"]] <- "WM"
+p04_006_srat[["case.control"]] <- "WM"
 ```
 # Getting % mitochondrial transcripts
 ```{r}
@@ -258,6 +266,13 @@ tonsil.2a[["source"]] <- "Stanford"
 tonsil.2b[["source"]] <- "Stanford"
 tonsil.3a[["source"]] <- "Stanford"
 tonsil.3b[["source"]] <- "Stanford"
+
+tonsil.1a[["case.control"]] <- "Control"
+tonsil.1b[["case.control"]] <- "Control"
+tonsil.2a[["case.control"]] <- "Control"
+tonsil.2b[["case.control"]] <- "Control"
+tonsil.3a[["case.control"]] <- "Control"
+tonsil.3b[["case.control"]] <- "Control"
 ```
 # Getting % mitochondrial transcripts
 ```{r}
@@ -312,6 +327,24 @@ tonsil.3b.filtered <- qc_filter_adts(tonsil.3b, 7500, 200, 20, 4000)
 
 rm(tonsil.1a, tonsil.1b, tonsil.2a, tonsil.2b, tonsil.3a, tonsil.3b)
 ```
+Merge and save
+```{r}
+wm.rna <- merge(p01_190_filtered, 
+                c(p04_003_filtered, 
+                p01_076_filtered, 
+                p01_115_filtered, 
+                p01_131_filtered, 
+                p01_163_filtered, 
+                p04_006_filtered)) 
+
+ctrl.rna <- merge(tonsil.1a.filtered,
+                  c(tonsil.1b.filtered,
+                  tonsil.2a.filtered,
+                  tonsil.2b.filtered,
+                  tonsil.3a.filtered,
+                  tonsil.3b.filtered))
+```
+
 # Merging data into disease and control for SCTransform integration
 ```{r}
 wm.rna <- merge(p01_190_filtered, 
@@ -329,24 +362,9 @@ ctrl.rna <- merge(tonsil.1a.filtered,
                   tonsil.3a.filtered,
                   tonsil.3b.filtered))
 
+saveRDS(wm.rna, "/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/scRNA_WM_MergedQCFiltered.rds")
+saveRDS(ctrl, "/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/scRNA_Ctrl_MergedQCFiltered.rds")
+
 rm(p01_190_filtered, p04_003_filtered, p01_076_filtered, p01_115_filtered, p01_131_filtered, p01_163_filtered, p04_006_filtered)
 rm(tonsil.1a.filtered, tonsil.1b.filtered, tonsil.2a.filtered, tonsil.2b.filtered, tonsil.3a.filtered, tonsil.3b.filtered)
 ```
-# SCTransforms
-```{r}
-ctrl.rna <- SCTransform(ctrl.rna, assay = "RNA", new.assay.name = "SCT", vst.flavor = "v2", ncells = 5000, vars.to.regress = "batch", method = "glmGamPoi") %>%
-  RunPCA(npcs = 20) %>%
-  RunUMAP(reduction = "pca", dims = 1:20) %>%
-  FindNeighbors(reduction = "pca", dims = 1:20) %>%
-  FindClusters(resolution = 0.7)
-
-DimPlot(ctrl.rna)
-
-wm.rna <- SCTransform(wm.rna, assay = "RNA", new.assay.name = "SCT", vst.flavor = "v2", ncells = 5000, vars.to.regress = "batch", method = "glmGamPoi", verbose = F) %>%
-  RunPCA(npcs = 20)
-
-saveRDS(wm.rna, "/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/WM_SCTransformed.rds")
-saveRDS(ctrl.rna, "/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/Ctrl_SCTransformed.rds")
-
-```
-

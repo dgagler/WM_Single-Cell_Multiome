@@ -1,0 +1,55 @@
+---
+title: "Post_CellTypist_MiloPrep"
+output: html_document
+date: "2023-01-01"
+---
+
+# Libraries
+```{r}
+library(Seurat)
+library(SeuratDisk)
+library(anndata)
+library(zellkonverter)
+library(ggplot2)
+library(scran)
+library(scater)
+options(future.globals.maxSize=1000000000000000) # Set max global size so we don't run out of memory
+```
+# Load in AnnData H5 object and convert to Seurat object
+```{r}
+base.object <- readRDS("/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/scRNA_SCTransformed_Integrated.rds")
+h5 <- readH5AD("/Users/gagled01/morganLab/Waldenstroms/singlecell/scRNA_SCTransformIntegrated_CellTypistAnnotated.h5ad", verbose = TRUE)
+seurat.object <- as.Seurat(h5, counts = "X", data = NULL)
+```
+# Fix possible cell mismatches and assign new celltype variables
+```{r}
+mismatch <- setdiff(rownames(seurat.object@meta.data), rownames(base.object@meta.data))
+seurat.object <- seurat.object[,!colnames(seurat.object) %in% mismatch]
+
+base.object@meta.data$majority_voting <- seurat.object@meta.data$majority_voting
+base.object@meta.data$conf_score <- seurat.object@meta.data$conf_score
+base.object@meta.data$predicted_labels <- seurat.object@meta.data$predicted_labels
+
+table(base.object@meta.data$majority_voting)
+table(base.object@meta.data$majority_voting)
+
+DimPlot(base.object, group.by = "majority_voting")
+```
+Checking annos
+```{r}
+DimPlot(base.object, reduction = "umap", group.by = "majority_voting")
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/scRNA_rawCTAnnotationUMAP.png", height = 4, width = 8)
+```
+Filtering B cells
+```{r}
+base.object_filt <- subset(base.object, subset = majority_voting %in% c("Age-associated B cells", "Germinal center B cells", "Large pre-B cells", "Memory B cells",
+                                                                    "Naive B cells", "Plasma cells", "Plasmablasts", "Pro-B cells", "Proliferative germinal center B cells", "Small pre-B cells"))
+base.object_filt@meta.data$majority_voting <- droplevels(base.object_filt@meta.data$majority_voting)
+```
+# Save it out
+```{r}
+saveRDS(base.object_filt, "/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/scRNA_SCTransformIntegrated_CTAnnotatedCleaned.rds")
+```
+
+
+

@@ -1,0 +1,70 @@
+---
+title: "scRNA_Integration"
+output: html_document
+date: "2023-08-03"
+---
+
+Doing an integrated analysis with SCTransform. As per - https://satijalab.org/seurat/articles/integration_introduction.html
+Involves running SCTransform on filtered ctrl data, then on WM data. Then selecting integration anchors, finding integration anchors, and integrating.
+Had some serious difficulty getting FindIntegrationAnchors to run. Ultimately had to run "rpca" reduction AND specify the dims to use to match those used in SCTransform
+
+Load libraries
+```{r}
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+library(SoupX)
+library(celda)
+library(DropletUtils)
+library(glmGamPoi)
+options(future.globals.maxSize=10000000000000000)
+```
+Load data
+```{r}
+wm.rna <- readRDS("/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/scRNA_WM_MergedQCFiltered.rds")
+ctrl.rna <- readRDS("/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/scRNA_Ctrl_MergedQCFiltered.rds")
+```
+SCTransform on both WM and ctrl
+```{r}
+ctrl.rna <- SCTransform(ctrl.rna, assay = "RNA", new.assay.name = "SCT", vst.flavor = "v2", ncells = 5000, vars.to.regress = "batch", method = "glmGamPoi") %>%
+  RunPCA(npcs = 20) %>%
+  RunUMAP(reduction = "pca", dims = 1:20) %>%
+  FindNeighbors(reduction = "pca", dims = 1:20) %>%
+  FindClusters(resolution = 0.7)
+
+wm.rna <- SCTransform(wm.rna, assay = "RNA", new.assay.name = "SCT", vst.flavor = "v2", ncells = 5000, vars.to.regress = "batch", method = "glmGamPoi", verbose = F) %>%
+  RunPCA(npcs = 20)
+```
+Integration set up
+```{r}
+ifnb.list <- list(ctrl = ctrl.rna, stim = wm.rna)
+features <- SelectIntegrationFeatures(object.list = ifnb.list)
+ifnb.list <- PrepSCTIntegration(object.list = ifnb.list, anchor.features = features)
+rm(wm.rna, ctrl.rna)
+```
+Perform integration
+```{r}
+anchors <- FindIntegrationAnchors(object.list = ifnb.list, normalization.method = "SCT", reduction = "rpca",
+    anchor.features = features, dims = 1:20)
+integrated <- IntegrateData(anchorset = anchors, normalization.method = "SCT", dims = 1:20)
+```
+Integrated Analysis
+```{r}
+integrated <- RunPCA(integrated, dims = 1:20)
+integrated <- RunUMAP(integrated, reduction = "pca", dims = 1:20)
+integrated <- FindNeighbors(integrated, reduction = "pca", dims = 1:20)
+integrated <- FindClusters(integrated, resolution = 0.7)
+DimPlot(integrated, reduction = "umap")
+```
+Bonus adding forgetten metadata
+```{r}
+integrated@meta.data$case.control <- integrated@meta.data$source
+integrated@meta.data$case.control[integrated@meta.data$source == "NYU"] <- "WM"
+integrated@meta.data$case.control[integrated@meta.data$source == "Stanford"] <- "HD"
+table(integrated@meta.data$case.control)
+```
+Save out
+```{r}
+saveRDS(integrated, "/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/scRNA_SCTransformed_Integrated.rds")
+```
