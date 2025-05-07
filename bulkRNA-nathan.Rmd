@@ -1,0 +1,1451 @@
+---
+title: "bulkRNA-nathan"
+output: html_document
+date: "2024-07-08"
+---
+
+# Bulk RNA-seq analysis for Nathan
+
+# QC checking
+```{r}
+summary.df <- read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/summary-combined.rna-star.csv")
+summary.df.clean <- summary.df[-c(31, 32, 33, 34, 35, 36, 37, 38),]
+summary.df.clean
+
+median(summary.df.clean$INPUT.READS)
+```
+```{r}
+hist(summary.df.clean$TRIM.INPUT.READS)
+
+# Barplot
+bar.df <- data.frame(sample = summary.df.clean$X.SAMPLE, input.reads = summary.df.clean$TRIM.INPUT.READS, trimmed.reads = summary.df.clean$TRIM.SURVIVING.READS)
+
+# Overlain barplot of trimmed vs. untrimmed reads
+library(reshape2)
+my_data_long <- melt(bar.df, id.vars = c("sample"))
+ggplot(data=my_data_long, aes(x=sample, y=value, fill=variable, color=variable, alpha=variable)) +
+  geom_bar(stat="identity", position ="identity") +
+  scale_colour_manual(values=c("lightblue4", "red")) +
+  scale_fill_manual(values=c("lightblue", "pink")) +
+  scale_alpha_manual(values=c(.3, .8)) + ylab("reads") + ggtitle("Reads trimmed per sample") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/Bulk-RNA/figures/QC_TrimmedReads_Barplot.png", height = 6, width = 9)
+
+# Histogram of total reads
+ggplot(bar.df, aes(x = trimmed.reads)) + geom_histogram()
+
+hist(bar.df$trimmed.reads)
+hist(summary.df$INPUT.READS)
+hist(summary.df.clean$INPUT.READS, breaks = 10, xlab = "Number of reads", ylab = "Frequency")
+```
+# BULK RNA PROCESSING - HEATMAP GENERATION
+```{r}
+library(DESeq2)
+library(apeglm)
+library(rtracklayer)
+library(tidyverse)
+library(ComplexHeatmap)
+library(glue)
+library(ggrepel)
+library(EnhancedVolcano)
+library(ggpubr)
+library(paletteer)
+library(scran)
+library(scater)
+library(SingleCellExperiment)
+
+options(scipen = 999)
+set.seed(101010)
+
+# Set figure base theme
+theme_set(
+  theme_gray() +
+    theme(axis.line = element_line(size = 0.5,  color = "black"),
+          panel.background = element_rect(fill = NA, size = rel(14)),
+          panel.grid.minor = element_line(color = NA),
+          axis.text = element_text(size = 12,  color = "black"),
+          axis.title = element_text(size = 14),
+          axis.ticks = element_line(size = 0.75),
+          title = element_text(size = 16),
+          plot.title = element_text(hjust = 0.5)
+    )
+)
+```
+Stage files
+```{r}
+#setwd("~/morganLab/molecularLandscapeAndTimeOfOriginOfWaldenstrom/data/rnaSeq")
+
+counts_data <- "/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_Cleaned.txt"
+gencode_gene_list = "/Users/gagled01/morganLab/Waldenstroms/Bulk-RNA/gencode.v42.primary_assembly.basic.annotation.gtf.gz"
+
+raw_counts <- read.table(file = counts_data, header = F)
+```
+Set colnames
+```{r}
+colnames(raw_counts) <- read_delim(file = counts_data, 
+                                   delim = "\t",
+                                   col_names = T,
+                                   show_col_types = FALSE) %>%
+  colnames() %>% str_remove(pattern = "\\#")
+
+raw_counts <- tibble::column_to_rownames(raw_counts,
+                                       var = "GENE")
+
+total_counts <- raw_counts
+```
+Set input genes (i.e. remove confounders to clean signal)
+```{r}
+gencode_genes <- import(gencode_gene_list)
+gencode_genes <- unique(gencode_genes[gencode_genes$type == "CDS"]$gene_name)
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^MT-")]
+
+# TESTING - REMOVE Ig and HLAs
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^IG")]
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^HLA")]
+```
+Filter low counts
+```{r}
+total_counts <- total_counts %>%
+  dplyr::filter(rownames(total_counts) %in% gencode_genes)
+
+per_gene_exp_mean <- total_counts %>%
+  dplyr::mutate(exp_mean = round(rowSums(total_counts) / ncol(total_counts),
+                                 digits = 0)) %>%
+  dplyr::select(exp_mean) %>%
+  purrr::as_vector() %>%
+  as.numeric()
+
+total_counts <- total_counts %>%
+  dplyr::filter(rowSums(total_counts) / ncol(total_counts) > round(median(per_gene_exp_mean) / 10,
+                                                                     digits = 0))
+```
+
+```{r}
+# Conversion to single cell experiment data format + log normalization
+sce <- SingleCellExperiment(list(counts = total_counts), 
+                            colData = colnames(total_counts),
+                            rowData = rownames(total_counts))
+
+# Generate cell size factors
+sce <- computeSumFactors(sce)
+
+# Log normalize relative to pseudo-cell from calculated cell size factors
+sce_log <- logNormCounts(sce)
+
+# Identifying most variable genes
+dec <- modelGeneVar(sce_log)
+hvgs <- getTopHVGs(dec, n=100)
+#hvgs <- c("EPHB1", "SGSM1", "ITGB1", "BANK1", "CD74", "FCHSD2", "FCRL1", "AKT3", "CD24", "AFF3", "SOX5", "PYHIN1",
+#          "JCHAIN", "PRDM1", "PELI1", "MS4A1", "CD79A", "CD79B", "EIF2AK3", "MSI2", "FCRL5", "MSI2", "XBP1", "MZB1", "CD27")
+
+# Isolate normalized counts from SCE object
+norm_hm <- exprs(sce_log)
+
+hm_plotvals <- (norm_hm - rowMeans(norm_hm)) %>% as.data.frame()
+
+# Ordered gene selection
+ind <- NULL
+
+for (i in 1:length(hvgs)){
+  ind[i] <- which(rownames(hm_plotvals) == hvgs[i])
+}
+
+#Taking normalized plot values for top HVGs
+hm_plotvals <- hm_plotvals[ind,]
+```
+# Heatmap
+```{r}
+# Create annotation of experimental conditions
+ha = HeatmapAnnotation(condition = c("HeLa_WT", "HeLa_WT", "HeLa_WT", "HeLa_Dox", "HeLa_Dox", "HeLa_Dox", "HeLa_Dox_R", "HeLa_Dox_R", "HeLa_R2", "KMS_WT", "KMS_WT", "KMS_WT", "KMS_Dox", "KMS_Dox", "KMS_Dox", "L363_WT", "L363_WT", "L363_WT", "L363_R1", "L363_R1", "L363_R1", "L363_R3", "L363_R3", "L363_R3", "Mia_WT", "Mia_WT", "Mia_WT", "Mia_R1", "Mia_R1", "Mia_R1"),
+                       col = list(condition = c("HeLa_WT" = "orange", "HeLa_Dox" = "blue", "HeLa_Dox_R" = "slateblue", "HeLa_R2" = "slateblue1", "KMS_WT" = "goldenrod", "KMS_Dox" = "purple",
+                                          "L363_WT" = "red", "L363_R1" = "forestgreen", "L363_R3" = "seagreen", "Mia_WT" = "black", "Mia_R1" = "gray")))
+
+pdf(file = "/Users/gagled01/morganLab/bulkRNA_Nathan/figures/BulkRNA-Heatmap.png", height = 10, width = 10)
+testing <- Heatmap(as.matrix(hm_plotvals), name = "mat", 
+                   show_column_names = FALSE, 
+                   top_annotation = ha, 
+                   column_km = 3,
+                   row_names_gp = grid::gpar(fontsize = 8))
+draw(testing)
+dev.off()
+
+#length(ha)
+        
+col = list(bar = c("HeLa_WT" = "red", "HeLa_Dox" = "blue", "HeLa_Dox_R1" = "green", "HeLa_Dox_R2" = "forestgreen", "KMS_WT" = "purple", "KMS_Dox" = "orchid",
+                                          "L363_WT" = "slateblue", "L363_R1" = "orange", "L363_R3" = "orangered", "Mia_WT" = "black", "Mia_R1" = "gray"))
+
+```
+# DESEQ2 ANALYSIS
+#### L363 COMPARISON ###
+```{r}
+counts_data <- "/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_L363_vs_R1.txt"
+gencode_gene_list = "/Users/gagled01/morganLab/Waldenstroms/Bulk-RNA/gencode.v42.primary_assembly.basic.annotation.gtf.gz"
+
+raw_counts <- read.table(file = counts_data, header = F)
+
+colnames(raw_counts) <- read_delim(file = counts_data, 
+                                   delim = "\t",
+                                   col_names = T,
+                                   show_col_types = FALSE) %>%
+  colnames() %>% str_remove(pattern = "\\#")
+
+raw_counts <- tibble::column_to_rownames(raw_counts,
+                                       var = "GENE")
+
+total_counts <- raw_counts
+
+gencode_genes <- import(gencode_gene_list)
+gencode_genes <- unique(gencode_genes[gencode_genes$type == "CDS"]$gene_name)
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^MT-")]
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^IG")]
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^HLA")]
+
+total_counts <- total_counts %>%
+  dplyr::filter(rownames(total_counts) %in% gencode_genes)
+
+per_gene_exp_mean <- total_counts %>%
+  dplyr::mutate(exp_mean = round(rowSums(total_counts) / ncol(total_counts),
+                                 digits = 0)) %>%
+  dplyr::select(exp_mean) %>%
+  purrr::as_vector() %>%
+  as.numeric()
+
+total_counts <- total_counts %>%
+  dplyr::filter(rowSums(total_counts) / ncol(total_counts) > round(median(per_gene_exp_mean) / 10,
+                                                                     digits = 0))
+
+sce <- SingleCellExperiment(list(counts = total_counts), 
+                            colData = colnames(total_counts),
+                            rowData = rownames(total_counts))
+
+# Generate cell size factors
+sce <- computeSumFactors(sce)
+
+# Log normalize relative to pseudo-cell from calculated cell size factors
+sce_log <- logNormCounts(sce)
+
+# Identifying most variable genes
+dec <- modelGeneVar(sce_log)
+hvgs <- getTopHVGs(dec, n=100)
+#hvgs <- c("EPHB1", "SGSM1", "ITGB1", "BANK1", "CD74", "FCHSD2", "FCRL1", "AKT3", "CD24", "AFF3", "SOX5", "PYHIN1",
+#          "JCHAIN", "PRDM1", "PELI1", "MS4A1", "CD79A", "CD79B", "EIF2AK3", "MSI2", "FCRL5", "MSI2", "XBP1", "MZB1", "CD27")
+
+# Isolate normalized counts from SCE object
+norm_hm <- exprs(sce_log)
+
+hm_plotvals <- (norm_hm - rowMeans(norm_hm)) %>% as.data.frame()
+
+# Ordered gene selection
+ind <- NULL
+
+for (i in 1:length(hvgs)){
+  ind[i] <- which(rownames(hm_plotvals) == hvgs[i])
+}
+
+#Taking normalized plot values for top HVGs
+hm_plotvals <- hm_plotvals[ind,]
+
+# Create annotation of experimental conditions
+ha = HeatmapAnnotation(condition = c("L363_WT", "L363_WT", "L363_WT", "L363_R1", "L363_R1", "L363_R1"),
+                       col = list(condition = c( "L363_WT" = "red", "L363_R1" = "forestgreen")))
+
+pdf(file = "/Users/gagled01/morganLab/bulkRNA_Nathan/figures/BulkRNA-Heatmap_L363_vs_R1.png", height = 10, width = 10)
+testing <- Heatmap(as.matrix(hm_plotvals), name = "mat", 
+                   show_column_names = FALSE, 
+                   top_annotation = ha, 
+                   column_km = 3,
+                   row_names_gp = grid::gpar(fontsize = 8))
+draw(testing)
+dev.off()
+
+#length(ha)
+        
+col = list(bar = c("HeLa_WT" = "red", "HeLa_Dox" = "blue", "HeLa_Dox_R1" = "green", "HeLa_Dox_R2" = "forestgreen", "KMS_WT" = "purple", "KMS_Dox" = "orchid",
+                                          "L363_WT" = "slateblue", "L363_R1" = "orange", "L363_R3" = "orangered", "Mia_WT" = "black", "Mia_R1" = "gray"))
+
+plotCounts(dds, gene="IRF6", intgroup="condition")
+plotCounts(dds, gene="CXCL14", intgroup="condition")
+plotCounts(dds, gene="CD44", intgroup="condition")
+plotCounts(dds, gene="CXCL8", intgroup="condition")
+plotCounts(dds, gene="FCRL2", intgroup="condition")
+plotCounts(dds, gene="CD79A", intgroup="condition")
+
+```
+# DESEQ2 and GSEA
+```{r}
+# Load metadata
+metadata <- read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/nathan_RNA_metadata_L363_vs_R1.csv", header = T, sep = ",")
+#metadata <- read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/nathan_RNA_metadata.csv", header = T, sep = ",")
+
+rownames(metadata) <- metadata$id
+metadata$condition <- factor(metadata$condition)
+head(metadata)
+
+#counts_data <- "/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_Cleaned.txt"
+cts <- as.matrix(read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_L363_vs_R1.txt",sep="\t",row.names="X.GENE"))
+#cts <- as.matrix(read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_Cleaned.txt",sep="\t",row.names="X.GENE"))
+
+# Make DESEQ object
+dds <- DESeqDataSetFromMatrix(countData=cts, # counts data resolved up above
+                              colData=metadata, 
+                              design=~condition)
+
+# Run DESEQ
+dds <- DESeq(dds)
+
+res <- results(dds)
+res <- res[order(res$log2FoldChange),]
+res.csv <- as.data.frame(res)
+
+# Order by pvalue
+res.csv <- res.csv[order(res.csv$pvalue),]
+# Create ranking
+rank.score <- sign(res.csv$log2FoldChange) * -log10(res.csv$pvalue)
+rank.score[6] <- rank.score[7] + 1 # input pvals of 0 produce Inf in the ranking...quick and dirty way to force a ranking for these
+rank.score[5] <- rank.score[6] + 1
+rank.score[4] <- rank.score[5] + 1
+rank.score[3] <- rank.score[4] + 1
+rank.score[2] <- rank.score[3] + 1
+rank.score[1] <- rank.score[2] + 1
+
+rank.score[1] <- rank.score[1] * -1 # force negative bcuz log2fc was neg for these
+rank.score[2] <- rank.score[2] * -1 
+rank.score[3] <- rank.score[3] * -1 
+rank.score[4] <- rank.score[4] * -1 
+rank.score
+
+# Generate gene list
+genes <- rownames(res.csv)
+
+# Put into df
+rank.df <- data.frame(genes, rank.score)
+rownames(rank.df) <- rank.df$genes
+rank.df <- rank.df[order(-rank.df$rank.score),]
+rank.df
+
+write.table(rank.df, "/Users/gagled01/morganLab/bulkRNA_Nathan/Nathan_L363_vs_R1_RankList_forGSEA.rnk",
+            sep = "\t",
+            quote = F,
+            row.names = F,
+            col.names = F)
+```
+
+```{r}
+counts_data <- "/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_L363_vs_R3.txt"
+gencode_gene_list = "/Users/gagled01/morganLab/Waldenstroms/Bulk-RNA/gencode.v42.primary_assembly.basic.annotation.gtf.gz"
+
+raw_counts <- read.table(file = counts_data, header = F)
+
+colnames(raw_counts) <- read_delim(file = counts_data, 
+                                   delim = "\t",
+                                   col_names = T,
+                                   show_col_types = FALSE) %>%
+  colnames() %>% str_remove(pattern = "\\#")
+
+raw_counts <- tibble::column_to_rownames(raw_counts,
+                                       var = "GENE")
+
+total_counts <- raw_counts
+
+gencode_genes <- import(gencode_gene_list)
+gencode_genes <- unique(gencode_genes[gencode_genes$type == "CDS"]$gene_name)
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^MT-")]
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^IG")]
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^HLA")]
+
+total_counts <- total_counts %>%
+  dplyr::filter(rownames(total_counts) %in% gencode_genes)
+
+per_gene_exp_mean <- total_counts %>%
+  dplyr::mutate(exp_mean = round(rowSums(total_counts) / ncol(total_counts),
+                                 digits = 0)) %>%
+  dplyr::select(exp_mean) %>%
+  purrr::as_vector() %>%
+  as.numeric()
+
+total_counts <- total_counts %>%
+  dplyr::filter(rowSums(total_counts) / ncol(total_counts) > round(median(per_gene_exp_mean) / 10,
+                                                                     digits = 0))
+
+sce <- SingleCellExperiment(list(counts = total_counts), 
+                            colData = colnames(total_counts),
+                            rowData = rownames(total_counts))
+
+# Generate cell size factors
+sce <- computeSumFactors(sce)
+
+# Log normalize relative to pseudo-cell from calculated cell size factors
+sce_log <- logNormCounts(sce)
+
+# Identifying most variable genes
+dec <- modelGeneVar(sce_log)
+hvgs <- getTopHVGs(dec, n=100)
+#hvgs <- c("EPHB1", "SGSM1", "ITGB1", "BANK1", "CD74", "FCHSD2", "FCRL1", "AKT3", "CD24", "AFF3", "SOX5", "PYHIN1",
+#          "JCHAIN", "PRDM1", "PELI1", "MS4A1", "CD79A", "CD79B", "EIF2AK3", "MSI2", "FCRL5", "MSI2", "XBP1", "MZB1", "CD27")
+
+# Isolate normalized counts from SCE object
+norm_hm <- exprs(sce_log)
+
+hm_plotvals <- (norm_hm - rowMeans(norm_hm)) %>% as.data.frame()
+
+# Ordered gene selection
+ind <- NULL
+
+for (i in 1:length(hvgs)){
+  ind[i] <- which(rownames(hm_plotvals) == hvgs[i])
+}
+
+#Taking normalized plot values for top HVGs
+hm_plotvals <- hm_plotvals[ind,]
+
+# Create annotation of experimental conditions
+ha = HeatmapAnnotation(condition = c("L363_WT", "L363_WT", "L363_WT", "L363_R3", "L363_R3", "L363_R3"),
+                       col = list(condition = c( "L363_WT" = "goldenrod", "L363_R3" = "orchid")))
+
+pdf(file = "/Users/gagled01/morganLab/bulkRNA_Nathan/figures/BulkRNA-Heatmap_L363_vs_R3.png", height = 10, width = 10)
+testing <- Heatmap(as.matrix(hm_plotvals), name = "mat", 
+                   show_column_names = FALSE, 
+                   top_annotation = ha, 
+                   column_km = 3,
+                   row_names_gp = grid::gpar(fontsize = 8))
+draw(testing)
+dev.off()
+```
+
+# DESEQ2 specific analysis
+```{r}
+###
+# Load metadata
+metadata <- read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/nathan_RNA_metadata_L363_vs_R3.csv", header = T, sep = ",")
+#metadata <- read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/nathan_RNA_metadata.csv", header = T, sep = ",")
+
+rownames(metadata) <- metadata$id
+metadata$condition <- factor(metadata$condition)
+head(metadata)
+
+#counts_data <- "/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_Cleaned.txt"
+cts <- as.matrix(read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_L363_vs_R3.txt",sep="\t",row.names="X.GENE"))
+#cts <- as.matrix(read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_Cleaned.txt",sep="\t",row.names="X.GENE"))
+
+# Make DESEQ object
+dds <- DESeqDataSetFromMatrix(countData=cts, # counts data resolved up above
+                              colData=metadata, 
+                              design=~condition)
+
+dds
+
+dds <- DESeq(dds)
+
+res <- results(dds)
+res <- res[order(res$log2FoldChange),]
+res.csv <- as.data.frame(res)
+
+# Order by pvalue
+res.csv <- res.csv[order(res.csv$pvalue),]
+# Create ranking
+rank.score <- sign(res.csv$log2FoldChange) * -log10(res.csv$pvalue)
+
+last.inf <- 16 # manually identify index of last inf
+for (x in (last.inf+1):1) { # fix infinites by adding 1 to last infinite and correcting to maintain pos/neg
+  new_vector <- c()
+  y <- abs(rank.score[x])+1
+  z <- sign(rank.score[x-1])
+  print(z)
+  rank.score[x-1] <- y*z
+}
+rank.score
+
+# Generate gene list
+genes <- rownames(res.csv)
+
+# Put into df
+rank.df <- data.frame(genes, rank.score)
+rownames(rank.df) <- rank.df$genes
+rank.df <- rank.df[order(-rank.df$rank.score),]
+rank.df
+
+write.table(rank.df, "/Users/gagled01/morganLab/bulkRNA_Nathan/Nathan_L363_vs_R3_RankList_forGSEA.rnk",
+            sep = "\t",
+            quote = F,
+            row.names = F,
+            col.names = F)
+```
+# other plots from DESEQ results
+```{r} 
+plotCounts(dds, gene="COL1A2", intgroup="condition")
+plotCounts(dds, gene="CD44", intgroup="condition")
+plotCounts(dds, gene="ITGAL", intgroup="condition")
+plotCounts(dds, gene="PTPRG", intgroup="condition")
+plotCounts(dds, gene="TGFBI", intgroup="condition")
+plotCounts(dds, gene="CXCL8", intgroup="condition")
+plotCounts(dds, gene="FCRL2", intgroup="condition")
+plotCounts(dds, gene="FCRL1", intgroup="condition")
+
+# PCA plot
+vsdata <- vst(dds, blind=FALSE)
+plotPCA(vsdata, intgroup="condition") #using the DESEQ2 plotPCA fxn we can
+
+# Volcano plot
+#reset par
+par(mfrow=c(1,1))
+# Make a basic volcano plot
+with(res, plot(log2FoldChange, -log10(pvalue), pch=20, main="Volcano plot", xlim=c(-3,3)))
+
+# Add colored points: blue if padj<0.01, red if log2FC>1 and padj<0.05)
+with(subset(res, padj<.01 ), points(log2FoldChange, -log10(pvalue), pch=20, col="blue"))
+with(subset(res, padj<.01 & abs(log2FoldChange)>2), points(log2FoldChange, -log10(pvalue), pch=20, col="red"))
+```
+
+```{r}
+counts_data <- "/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_L363.txt"
+gencode_gene_list = "/Users/gagled01/morganLab/Waldenstroms/Bulk-RNA/gencode.v42.primary_assembly.basic.annotation.gtf.gz"
+
+raw_counts <- read.table(file = counts_data, header = F)
+
+colnames(raw_counts) <- read_delim(file = counts_data, 
+                                   delim = "\t",
+                                   col_names = T,
+                                   show_col_types = FALSE) %>%
+  colnames() %>% str_remove(pattern = "\\#")
+
+raw_counts <- tibble::column_to_rownames(raw_counts,
+                                       var = "GENE")
+
+total_counts <- raw_counts
+
+gencode_genes <- import(gencode_gene_list)
+gencode_genes <- unique(gencode_genes[gencode_genes$type == "CDS"]$gene_name)
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^MT-")]
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^IG")]
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^HLA")]
+
+total_counts <- total_counts %>%
+  dplyr::filter(rownames(total_counts) %in% gencode_genes)
+
+per_gene_exp_mean <- total_counts %>%
+  dplyr::mutate(exp_mean = round(rowSums(total_counts) / ncol(total_counts),
+                                 digits = 0)) %>%
+  dplyr::select(exp_mean) %>%
+  purrr::as_vector() %>%
+  as.numeric()
+
+total_counts <- total_counts %>%
+  dplyr::filter(rowSums(total_counts) / ncol(total_counts) > round(median(per_gene_exp_mean) / 10,
+                                                                     digits = 0))
+
+sce <- SingleCellExperiment(list(counts = total_counts), 
+                            colData = colnames(total_counts),
+                            rowData = rownames(total_counts))
+
+# Generate cell size factors
+sce <- computeSumFactors(sce)
+
+# Log normalize relative to pseudo-cell from calculated cell size factors
+sce_log <- logNormCounts(sce)
+
+# Identifying most variable genes
+dec <- modelGeneVar(sce_log)
+hvgs <- getTopHVGs(dec, n=100)
+#hvgs <- c("EPHB1", "SGSM1", "ITGB1", "BANK1", "CD74", "FCHSD2", "FCRL1", "AKT3", "CD24", "AFF3", "SOX5", "PYHIN1",
+#          "JCHAIN", "PRDM1", "PELI1", "MS4A1", "CD79A", "CD79B", "EIF2AK3", "MSI2", "FCRL5", "MSI2", "XBP1", "MZB1", "CD27")
+
+# Isolate normalized counts from SCE object
+norm_hm <- exprs(sce_log)
+
+hm_plotvals <- (norm_hm - rowMeans(norm_hm)) %>% as.data.frame()
+
+# Ordered gene selection
+ind <- NULL
+
+for (i in 1:length(hvgs)){
+  ind[i] <- which(rownames(hm_plotvals) == hvgs[i])
+}
+
+#Taking normalized plot values for top HVGs
+hm_plotvals <- hm_plotvals[ind,]
+
+# Create annotation of experimental conditions
+ha = HeatmapAnnotation(condition = c("L363_WT", "L363_WT", "L363_WT", "L363_R1", "L363_R1", "L363_R1", "L363_R3", "L363_R3", "L363_R3"),
+                       col = list(condition = c( "L363_WT" = "goldenrod", "L363_R1" = "darkcyan", "L363_R3" = "orchid")))
+
+pdf(file = "/Users/gagled01/morganLab/bulkRNA_Nathan/figures/BulkRNA-Heatmap_L363_vs_Both.png", height = 10, width = 10)
+testing <- Heatmap(as.matrix(hm_plotvals), name = "mat", 
+                   show_column_names = FALSE, 
+                   top_annotation = ha, 
+                   column_km = 3,
+                   row_names_gp = grid::gpar(fontsize = 8))
+draw(testing)
+dev.off()
+```
+
+# DESEQ2 specific analysis
+```{r}
+###
+# Load metadata
+metadata <- read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/nathan_RNA_metadata_L363.csv", header = T, sep = ",")
+#metadata <- read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/nathan_RNA_metadata.csv", header = T, sep = ",")
+
+rownames(metadata) <- metadata$id
+metadata$condition <- factor(metadata$condition)
+head(metadata)
+
+#counts_data <- "/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_Cleaned.txt"
+cts <- as.matrix(read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_L363.txt",sep="\t",row.names="X.GENE"))
+#cts <- as.matrix(read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_Cleaned.txt",sep="\t",row.names="X.GENE"))
+
+# Make DESEQ object
+dds <- DESeqDataSetFromMatrix(countData=cts, # counts data resolved up above
+                              colData=metadata, 
+                              design=~condition)
+
+dds
+
+dds <- DESeq(dds)
+
+res <- results(dds)
+res <- res[order(res$log2FoldChange),]
+res[10:30,]
+summary(res)
+
+res.csv <- as.data.frame(res)
+write.csv(res.csv, "/Users/gagled01/morganLab/bulkRNA_Nathan/csvs/L363_vs_Both_deseq2_DifferentialGenes.csv")
+
+plotCounts(dds, gene="IRF6", intgroup="condition")
+plotCounts(dds, gene="ANGPT1", intgroup="condition")
+plotCounts(dds, gene="FRMPD3", intgroup="condition")
+plotCounts(dds, gene="MAGEA4", intgroup="condition")
+plotCounts(dds, gene="LAPTM5", intgroup="condition")
+plotCounts(dds, gene="GAB3", intgroup="condition")
+plotCounts(dds, gene="CD44", intgroup="condition")
+plotCounts(dds, gene="FCRL1", intgroup="condition")
+plotCounts(dds, gene="FCRL2", intgroup="condition")
+plotCounts(dds, gene="CD79A", intgroup="condition")
+
+# PCA plot
+vsdata <- vst(dds, blind=FALSE)
+plotPCA(vsdata, intgroup="condition") #using the DESEQ2 plotPCA fxn we can
+
+# Volcano plot
+#reset par
+par(mfrow=c(1,1))
+# Make a basic volcano plot
+with(res, plot(log2FoldChange, -log10(pvalue), pch=20, main="Volcano plot", xlim=c(-3,3)))
+
+# Add colored points: blue if padj<0.01, red if log2FC>1 and padj<0.05)
+with(subset(res, padj<.01 ), points(log2FoldChange, -log10(pvalue), pch=20, col="blue"))
+with(subset(res, padj<.01 & abs(log2FoldChange)>2), points(log2FoldChange, -log10(pvalue), pch=20, col="red"))
+
+```
+### KMS ###
+```{r}
+counts_data <- "/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_KMS_WT_vs_Dox_noWT3.txt"
+gencode_gene_list = "/Users/gagled01/morganLab/Waldenstroms/Bulk-RNA/gencode.v42.primary_assembly.basic.annotation.gtf.gz"
+
+raw_counts <- read.table(file = counts_data, header = F)
+
+colnames(raw_counts) <- read_delim(file = counts_data, 
+                                   delim = "\t",
+                                   col_names = T,
+                                   show_col_types = FALSE) %>%
+  colnames() %>% str_remove(pattern = "\\#")
+
+raw_counts <- tibble::column_to_rownames(raw_counts,
+                                       var = "GENE")
+
+total_counts <- raw_counts
+
+gencode_genes <- import(gencode_gene_list)
+gencode_genes <- unique(gencode_genes[gencode_genes$type == "CDS"]$gene_name)
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^MT-")]
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^IG")]
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^HLA")]
+
+total_counts <- total_counts %>%
+  dplyr::filter(rownames(total_counts) %in% gencode_genes)
+
+per_gene_exp_mean <- total_counts %>%
+  dplyr::mutate(exp_mean = round(rowSums(total_counts) / ncol(total_counts),
+                                 digits = 0)) %>%
+  dplyr::select(exp_mean) %>%
+  purrr::as_vector() %>%
+  as.numeric()
+
+total_counts <- total_counts %>%
+  dplyr::filter(rowSums(total_counts) / ncol(total_counts) > round(median(per_gene_exp_mean) / 10,
+                                                                     digits = 0))
+
+sce <- SingleCellExperiment(list(counts = total_counts), 
+                            colData = colnames(total_counts),
+                            rowData = rownames(total_counts))
+
+# Generate cell size factors
+sce <- computeSumFactors(sce)
+
+# Log normalize relative to pseudo-cell from calculated cell size factors
+sce_log <- logNormCounts(sce)
+
+# Identifying most variable genes
+dec <- modelGeneVar(sce_log)
+hvgs <- getTopHVGs(dec, n=100)
+#hvgs <- c("EPHB1", "SGSM1", "ITGB1", "BANK1", "CD74", "FCHSD2", "FCRL1", "AKT3", "CD24", "AFF3", "SOX5", "PYHIN1",
+#          "JCHAIN", "PRDM1", "PELI1", "MS4A1", "CD79A", "CD79B", "EIF2AK3", "MSI2", "FCRL5", "MSI2", "XBP1", "MZB1", "CD27")
+
+# Isolate normalized counts from SCE object
+norm_hm <- exprs(sce_log)
+
+hm_plotvals <- (norm_hm - rowMeans(norm_hm)) %>% as.data.frame()
+
+# Ordered gene selection
+ind <- NULL
+
+for (i in 1:length(hvgs)){
+  ind[i] <- which(rownames(hm_plotvals) == hvgs[i])
+}
+
+#Taking normalized plot values for top HVGs
+hm_plotvals <- hm_plotvals[ind,]
+
+# Create annotation of experimental conditions
+ha = HeatmapAnnotation(condition = c("KMS_WT", "KMS_WT", "KMS_Dox", "KMS_Dox", "KMS_Dox"),
+                       col = list(condition = c("KMS_WT" = "orchid", "KMS_Dox" = "goldenrod"))
+                       )
+
+pdf(file = "/Users/gagled01/morganLab/bulkRNA_Nathan/figures/BulkRNA-Heatmap_KMS_WT_vs_Dox_noWT3.png", height = 10, width = 10)
+testing <- Heatmap(as.matrix(hm_plotvals), name = "mat", 
+                   show_column_names = FALSE, 
+                   top_annotation = ha, 
+                   column_km = 3,
+                   row_names_gp = grid::gpar(fontsize = 8))
+draw(testing)
+dev.off()
+
+#length(ha)
+        
+col = list(bar = c("HeLa_WT" = "red", "HeLa_Dox" = "blue", "HeLa_Dox_R1" = "green", "HeLa_Dox_R2" = "forestgreen", "KMS_WT" = "purple", "KMS_Dox" = "orchid",
+                                          "L363_WT" = "slateblue", "L363_R1" = "orange", "L363_R3" = "orangered", "Mia_WT" = "black", "Mia_R1" = "gray"))
+
+#################### DESEQ2 PART
+
+# Load metadata
+metadata <- read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/nathan_RNA_metadata_KMS_WT_vs_Dox_noWT3.csv", header = T, sep = ",")
+#metadata <- read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/nathan_RNA_metadata.csv", header = T, sep = ",")
+
+rownames(metadata) <- metadata$id
+metadata$condition <- factor(metadata$condition)
+head(metadata)
+
+#counts_data <- "/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_Cleaned.txt"
+cts <- as.matrix(read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_KMS_WT_vs_Dox_noWT3.txt",sep="\t",row.names="X.GENE"))
+#cts <- as.matrix(read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_Cleaned.txt",sep="\t",row.names="X.GENE"))
+
+# Make DESEQ object
+dds <- DESeqDataSetFromMatrix(countData=cts, # counts data resolved up above
+                              colData=metadata, 
+                              design=~condition)
+
+dds
+
+dds <- DESeq(dds)
+
+res <- results(dds)
+res <- res[order(res$log2FoldChange),]
+res.csv <- as.data.frame(res)
+
+# Order by pvalue
+res.csv <- res.csv[order(res.csv$pvalue),]
+# Create ranking
+rank.score <- sign(res.csv$log2FoldChange) * -log10(res.csv$pvalue)
+rank.score[1] <- abs(rank.score[2]) + 1 # input pvals of 0 produce Inf in the ranking...quick and dirty way to force a ranking for these
+
+rank.score[1] <- rank.score[1] * -1 # force negative bcuz log2fc was neg for these
+
+rank.score
+
+# Generate gene list
+genes <- rownames(res.csv)
+
+# Put into df
+rank.df <- data.frame(genes, rank.score)
+rownames(rank.df) <- rank.df$genes
+rank.df <- rank.df[order(-rank.df$rank.score),]
+rank.df
+
+write.table(rank.df, "/Users/gagled01/morganLab/bulkRNA_Nathan/Nathan_KMS_WT_vs_Dox_noWT2_RankList_forGSEA.rnk",
+            sep = "\t",
+            quote = F,
+            row.names = F,
+            col.names = F)
+```
+# Other deseq based figs
+```{r}
+# Specific genes
+plotCounts(dds, gene="IL32", intgroup="condition")
+plotCounts(dds, gene="CCL3", intgroup="condition")
+plotCounts(dds, gene="IL2RB", intgroup="condition")
+plotCounts(dds, gene="IL10", intgroup="condition")
+plotCounts(dds, gene="EGR1", intgroup="condition")
+plotCounts(dds, gene="CXCR3", intgroup="condition")
+
+
+# PCA plot
+vsdata <- vst(dds, blind=FALSE)
+plotPCA(vsdata, intgroup="condition") #using the DESEQ2 plotPCA fxn we can
+
+# Volcano plot
+#reset par
+par(mfrow=c(1,1))
+# Make a basic volcano plot
+with(res, plot(log2FoldChange, -log10(pvalue), pch=20, main="Volcano plot", xlim=c(-3,3)))
+
+# Add colored points: blue if padj<0.01, red if log2FC>1 and padj<0.05)
+with(subset(res, padj<.01 ), points(log2FoldChange, -log10(pvalue), pch=20, col="blue"))
+with(subset(res, padj<.01 & abs(log2FoldChange)>2), points(log2FoldChange, -log10(pvalue), pch=20, col="red"))
+```
+```{r}
+counts_data <- "/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_HeLa_All.txt"
+gencode_gene_list = "/Users/gagled01/morganLab/Waldenstroms/Bulk-RNA/gencode.v42.primary_assembly.basic.annotation.gtf.gz"
+
+raw_counts <- read.table(file = counts_data, header = F)
+
+colnames(raw_counts) <- read_delim(file = counts_data, 
+                                   delim = "\t",
+                                   col_names = T,
+                                   show_col_types = FALSE) %>%
+  colnames() %>% str_remove(pattern = "\\#")
+
+raw_counts <- tibble::column_to_rownames(raw_counts,
+                                       var = "GENE")
+
+total_counts <- raw_counts
+
+gencode_genes <- import(gencode_gene_list)
+gencode_genes <- unique(gencode_genes[gencode_genes$type == "CDS"]$gene_name)
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^MT-")]
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^IG")]
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^HLA")]
+
+total_counts <- total_counts %>%
+  dplyr::filter(rownames(total_counts) %in% gencode_genes)
+
+per_gene_exp_mean <- total_counts %>%
+  dplyr::mutate(exp_mean = round(rowSums(total_counts) / ncol(total_counts),
+                                 digits = 0)) %>%
+  dplyr::select(exp_mean) %>%
+  purrr::as_vector() %>%
+  as.numeric()
+
+total_counts <- total_counts %>%
+  dplyr::filter(rowSums(total_counts) / ncol(total_counts) > round(median(per_gene_exp_mean) / 10,
+                                                                     digits = 0))
+
+sce <- SingleCellExperiment(list(counts = total_counts), 
+                            colData = colnames(total_counts),
+                            rowData = rownames(total_counts))
+
+# Generate cell size factors
+sce <- computeSumFactors(sce)
+
+# Log normalize relative to pseudo-cell from calculated cell size factors
+sce_log <- logNormCounts(sce)
+
+# Identifying most variable genes
+dec <- modelGeneVar(sce_log)
+hvgs <- getTopHVGs(dec, n=100)
+#hvgs <- c("EPHB1", "SGSM1", "ITGB1", "BANK1", "CD74", "FCHSD2", "FCRL1", "AKT3", "CD24", "AFF3", "SOX5", "PYHIN1",
+#          "JCHAIN", "PRDM1", "PELI1", "MS4A1", "CD79A", "CD79B", "EIF2AK3", "MSI2", "FCRL5", "MSI2", "XBP1", "MZB1", "CD27")
+
+# Isolate normalized counts from SCE object
+norm_hm <- exprs(sce_log)
+
+hm_plotvals <- (norm_hm - rowMeans(norm_hm)) %>% as.data.frame()
+
+# Ordered gene selection
+ind <- NULL
+
+for (i in 1:length(hvgs)){
+  ind[i] <- which(rownames(hm_plotvals) == hvgs[i])
+}
+
+#Taking normalized plot values for top HVGs
+hm_plotvals <- hm_plotvals[ind,]
+
+# Create annotation of experimental conditions
+ha = HeatmapAnnotation(condition = c("HeLa_WT", "HeLa_WT", "HeLa_WT", "HeLa_Dox", "HeLa_Dox", "HeLa_Dox", "HeLa_Dox_R1", "HeLa_Dox_R2", "HeLa_NoDox_R"),
+                       col = list(condition = c("HeLa_WT" = "orchid", "HeLa_Dox" = "goldenrod", "HeLa_Dox_R1" = "orangered", "HeLa_Dox_R2" = "slateblue1", "HeLa_NoDox_R" = "black"))
+                       )
+
+pdf(file = "/Users/gagled01/morganLab/bulkRNA_Nathan/figures/BulkRNA-Heatmap_KMS_HeLa_All.png", height = 10, width = 10)
+testing <- Heatmap(as.matrix(hm_plotvals), name = "mat", 
+                   show_column_names = FALSE, 
+                   top_annotation = ha, 
+                   column_km = 3,
+                   row_names_gp = grid::gpar(fontsize = 8))
+draw(testing)
+dev.off()
+
+#length(ha)
+        
+col = list(bar = c("HeLa_WT" = "red", "HeLa_Dox" = "blue", "HeLa_Dox_R1" = "green", "HeLa_Dox_R2" = "forestgreen", "HeLa_NoDox_R" = "yellow", "KMS_WT" = "purple", "KMS_Dox" = "orchid",
+                                          "L363_WT" = "slateblue", "L363_R1" = "orange", "L363_R3" = "orangered", "Mia_WT" = "black", "Mia_R1" = "gray"))
+
+#################### DESEQ2 PART
+
+# Load metadata
+metadata <- read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/nathan_RNA_metadata_HeLa_All.csv", header = T, sep = ",")
+#metadata <- read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/nathan_RNA_metadata.csv", header = T, sep = ",")
+
+rownames(metadata) <- metadata$id
+metadata$condition <- factor(metadata$condition)
+head(metadata)
+
+#counts_data <- "/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_Cleaned.txt"
+cts <- as.matrix(read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_HeLa_All.txt",sep="\t",row.names="X.GENE"))
+#cts <- as.matrix(read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_Cleaned.txt",sep="\t",row.names="X.GENE"))
+
+# Make DESEQ object
+dds <- DESeqDataSetFromMatrix(countData=cts, # counts data resolved up above
+                              colData=metadata, 
+                              design=~condition)
+
+dds
+
+dds <- DESeq(dds)
+
+res <- results(dds)
+res <- res[order(res$log2FoldChange),]
+res[10:30,]
+summary(res)
+
+res.csv <- as.data.frame(res)
+write.csv(res.csv, "/Users/gagled01/morganLab/bulkRNA_Nathan/csvs/HeLa_vs_All_deseq2_DifferentialGenes_.csv")
+
+# Specific genes
+plotCounts(dds, gene="HTR7", intgroup="condition")
+plotCounts(dds, gene="IL1B", intgroup="condition")
+plotCounts(dds, gene="CXCL8", intgroup="condition")
+plotCounts(dds, gene="CADM1", intgroup="condition")
+plotCounts(dds, gene="MGMT", intgroup="condition")
+plotCounts(dds, gene="CXCL2", intgroup="condition")
+
+
+# PCA plot
+vsdata <- vst(dds, blind=FALSE)
+plotPCA(vsdata, intgroup="condition") #using the DESEQ2 plotPCA fxn we can
+
+# Volcano plot
+#reset par
+par(mfrow=c(1,1))
+# Make a basic volcano plot
+with(res, plot(log2FoldChange, -log10(pvalue), pch=20, main="Volcano plot", xlim=c(-3,3)))
+
+# Add colored points: blue if padj<0.01, red if log2FC>1 and padj<0.05)
+with(subset(res, padj<.01 ), points(log2FoldChange, -log10(pvalue), pch=20, col="blue"))
+with(subset(res, padj<.01 & abs(log2FoldChange)>2), points(log2FoldChange, -log10(pvalue), pch=20, col="red"))
+```
+```{r}
+counts_data <- "/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_HeLa_WT_vs_Dox.txt"
+gencode_gene_list = "/Users/gagled01/morganLab/Waldenstroms/Bulk-RNA/gencode.v42.primary_assembly.basic.annotation.gtf.gz"
+
+raw_counts <- read.table(file = counts_data, header = F)
+
+colnames(raw_counts) <- read_delim(file = counts_data, 
+                                   delim = "\t",
+                                   col_names = T,
+                                   show_col_types = FALSE) %>%
+  colnames() %>% str_remove(pattern = "\\#")
+
+raw_counts <- tibble::column_to_rownames(raw_counts,
+                                       var = "GENE")
+
+total_counts <- raw_counts
+
+gencode_genes <- import(gencode_gene_list)
+gencode_genes <- unique(gencode_genes[gencode_genes$type == "CDS"]$gene_name)
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^MT-")]
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^IG")]
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^HLA")]
+
+total_counts <- total_counts %>%
+  dplyr::filter(rownames(total_counts) %in% gencode_genes)
+
+per_gene_exp_mean <- total_counts %>%
+  dplyr::mutate(exp_mean = round(rowSums(total_counts) / ncol(total_counts),
+                                 digits = 0)) %>%
+  dplyr::select(exp_mean) %>%
+  purrr::as_vector() %>%
+  as.numeric()
+
+total_counts <- total_counts %>%
+  dplyr::filter(rowSums(total_counts) / ncol(total_counts) > round(median(per_gene_exp_mean) / 10,
+                                                                     digits = 0))
+
+sce <- SingleCellExperiment(list(counts = total_counts), 
+                            colData = colnames(total_counts),
+                            rowData = rownames(total_counts))
+
+# Generate cell size factors
+sce <- computeSumFactors(sce)
+
+# Log normalize relative to pseudo-cell from calculated cell size factors
+sce_log <- logNormCounts(sce)
+
+# Identifying most variable genes
+dec <- modelGeneVar(sce_log)
+hvgs <- getTopHVGs(dec, n=100)
+#hvgs <- c("EPHB1", "SGSM1", "ITGB1", "BANK1", "CD74", "FCHSD2", "FCRL1", "AKT3", "CD24", "AFF3", "SOX5", "PYHIN1",
+#          "JCHAIN", "PRDM1", "PELI1", "MS4A1", "CD79A", "CD79B", "EIF2AK3", "MSI2", "FCRL5", "MSI2", "XBP1", "MZB1", "CD27")
+
+# Isolate normalized counts from SCE object
+norm_hm <- exprs(sce_log)
+
+hm_plotvals <- (norm_hm - rowMeans(norm_hm)) %>% as.data.frame()
+
+# Ordered gene selection
+ind <- NULL
+
+for (i in 1:length(hvgs)){
+  ind[i] <- which(rownames(hm_plotvals) == hvgs[i])
+}
+
+#Taking normalized plot values for top HVGs
+hm_plotvals <- hm_plotvals[ind,]
+
+# Create annotation of experimental conditions
+ha = HeatmapAnnotation(condition = c("HeLa_WT", "HeLa_WT", "HeLa_WT", "HeLa_Dox", "HeLa_Dox", "HeLa_Dox"),
+                       col = list(condition = c("HeLa_WT" = "orchid", "HeLa_Dox" = "goldenrod"))
+                       )
+
+pdf(file = "/Users/gagled01/morganLab/bulkRNA_Nathan/figures/BulkRNA-Heatmap_KMS_HeLa_WT_vs_Dox.png", height = 10, width = 10)
+testing <- Heatmap(as.matrix(hm_plotvals), name = "mat", 
+                   show_column_names = FALSE, 
+                   top_annotation = ha, 
+                   column_km = 3,
+                   row_names_gp = grid::gpar(fontsize = 8))
+draw(testing)
+dev.off()
+
+#length(ha)
+        
+col = list(bar = c("HeLa_WT" = "red", "HeLa_Dox" = "blue", "HeLa_Dox_R1" = "green", "HeLa_Dox_R2" = "forestgreen", "HeLa_NoDox_R" = "yellow", "KMS_WT" = "purple", "KMS_Dox" = "orchid",
+                                          "L363_WT" = "slateblue", "L363_R1" = "orange", "L363_R3" = "orangered", "Mia_WT" = "black", "Mia_R1" = "gray"))
+
+#################### DESEQ2 PART
+
+# Load metadata
+metadata <- read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/nathan_RNA_metadata_HeLa_WT_vs_Dox.csv", header = T, sep = ",")
+#metadata <- read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/nathan_RNA_metadata.csv", header = T, sep = ",")
+
+rownames(metadata) <- metadata$id
+metadata$condition <- factor(metadata$condition)
+head(metadata)
+
+#counts_data <- "/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_Cleaned.txt"
+cts <- as.matrix(read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_HeLa_WT_vs_Dox.txt",sep="\t",row.names="X.GENE"))
+#cts <- as.matrix(read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_Cleaned.txt",sep="\t",row.names="X.GENE"))
+
+# Make DESEQ object
+dds <- DESeqDataSetFromMatrix(countData=cts, # counts data resolved up above
+                              colData=metadata, 
+                              design=~condition)
+
+dds
+
+dds <- DESeq(dds)
+
+res <- results(dds)
+res <- res[order(res$log2FoldChange),]
+res.csv <- as.data.frame(res)
+
+# Order by pvalue
+res.csv <- res.csv[order(res.csv$pvalue),]
+# Create ranking
+rank.score <- sign(res.csv$log2FoldChange) * -log10(res.csv$pvalue)
+
+last.inf <- 124 # manually identify index of last inf
+for (x in (last.inf+1):1) { # fix infinites by adding 1 to last infinite and correcting to maintain pos/neg
+  new_vector <- c()
+  y <- abs(rank.score[x])+1
+  z <- sign(rank.score[x-1])
+  print(z)
+  rank.score[x-1] <- y*z
+}
+rank.score
+
+# Generate gene list
+genes <- rownames(res.csv)
+
+# Put into df
+rank.df <- data.frame(genes, rank.score)
+rownames(rank.df) <- rank.df$genes
+rank.df <- rank.df[order(-rank.df$rank.score),]
+rank.df
+
+write.table(rank.df, "/Users/gagled01/morganLab/bulkRNA_Nathan/Nathan_HeLa_WT_vs_Dox_RankList_forGSEA.rnk",
+            sep = "\t",
+            quote = F,
+            row.names = F,
+            col.names = F)
+
+# Specific genes
+plotCounts(dds, gene="IL1A", intgroup="condition")
+plotCounts(dds, gene="CXCL2", intgroup="condition")
+plotCounts(dds, gene="IL6", intgroup="condition")
+plotCounts(dds, gene="IL1B", intgroup="condition")
+plotCounts(dds, gene="CXCL1", intgroup="condition")
+plotCounts(dds, gene="DUSP5", intgroup="condition")
+
+
+# PCA plot
+vsdata <- vst(dds, blind=FALSE)
+plotPCA(vsdata, intgroup="condition") #using the DESEQ2 plotPCA fxn we can
+
+# Volcano plot
+#reset par
+par(mfrow=c(1,1))
+# Make a basic volcano plot
+with(res, plot(log2FoldChange, -log10(pvalue), pch=20, main="Volcano plot", xlim=c(-3,3)))
+
+# Add colored points: blue if padj<0.01, red if log2FC>1 and padj<0.05)
+with(subset(res, padj<.01 ), points(log2FoldChange, -log10(pvalue), pch=20, col="blue"))
+with(subset(res, padj<.01 & abs(log2FoldChange)>2), points(log2FoldChange, -log10(pvalue), pch=20, col="red"))
+```
+```{r}
+counts_data <- "/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_HeLa_Dox_vs_Rs.txt"
+gencode_gene_list = "/Users/gagled01/morganLab/Waldenstroms/Bulk-RNA/gencode.v42.primary_assembly.basic.annotation.gtf.gz"
+
+raw_counts <- read.table(file = counts_data, header = F)
+
+colnames(raw_counts) <- read_delim(file = counts_data, 
+                                   delim = "\t",
+                                   col_names = T,
+                                   show_col_types = FALSE) %>%
+  colnames() %>% str_remove(pattern = "\\#")
+
+raw_counts <- tibble::column_to_rownames(raw_counts,
+                                       var = "GENE")
+
+total_counts <- raw_counts
+
+gencode_genes <- import(gencode_gene_list)
+gencode_genes <- unique(gencode_genes[gencode_genes$type == "CDS"]$gene_name)
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^MT-")]
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^IG")]
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^HLA")]
+
+total_counts <- total_counts %>%
+  dplyr::filter(rownames(total_counts) %in% gencode_genes)
+
+per_gene_exp_mean <- total_counts %>%
+  dplyr::mutate(exp_mean = round(rowSums(total_counts) / ncol(total_counts),
+                                 digits = 0)) %>%
+  dplyr::select(exp_mean) %>%
+  purrr::as_vector() %>%
+  as.numeric()
+
+total_counts <- total_counts %>%
+  dplyr::filter(rowSums(total_counts) / ncol(total_counts) > round(median(per_gene_exp_mean) / 10,
+                                                                     digits = 0))
+
+sce <- SingleCellExperiment(list(counts = total_counts), 
+                            colData = colnames(total_counts),
+                            rowData = rownames(total_counts))
+
+# Generate cell size factors
+sce <- computeSumFactors(sce)
+
+# Log normalize relative to pseudo-cell from calculated cell size factors
+sce_log <- logNormCounts(sce)
+
+# Identifying most variable genes
+dec <- modelGeneVar(sce_log)
+hvgs <- getTopHVGs(dec, n=100)
+#hvgs <- c("EPHB1", "SGSM1", "ITGB1", "BANK1", "CD74", "FCHSD2", "FCRL1", "AKT3", "CD24", "AFF3", "SOX5", "PYHIN1",
+#          "JCHAIN", "PRDM1", "PELI1", "MS4A1", "CD79A", "CD79B", "EIF2AK3", "MSI2", "FCRL5", "MSI2", "XBP1", "MZB1", "CD27")
+
+# Isolate normalized counts from SCE object
+norm_hm <- exprs(sce_log)
+
+hm_plotvals <- (norm_hm - rowMeans(norm_hm)) %>% as.data.frame()
+
+# Ordered gene selection
+ind <- NULL
+
+for (i in 1:length(hvgs)){
+  ind[i] <- which(rownames(hm_plotvals) == hvgs[i])
+}
+
+#Taking normalized plot values for top HVGs
+hm_plotvals <- hm_plotvals[ind,]
+
+# Create annotation of experimental conditions
+ha = HeatmapAnnotation(condition = c("HeLa_Dox", "HeLa_Dox", "HeLa_Dox", "HeLa_Dox_R1", "HeLa_Dox_R2", "HeLa_NoDox_R"),
+                       col = list(condition = c("HeLa_Dox" = "slateblue", "HeLa_Dox_R1" = "orangered", "HeLa_Dox_R2" = "forestgreen", "HeLa_NoDox_R" = "goldenrod"))
+                       )
+
+pdf(file = "/Users/gagled01/morganLab/bulkRNA_Nathan/figures/BulkRNA-Heatmap_KMS_HeLa_Dox_vs_Rs.png", height = 10, width = 10)
+testing <- Heatmap(as.matrix(hm_plotvals), name = "mat", 
+                   show_column_names = FALSE, 
+                   top_annotation = ha, 
+                   column_km = 3,
+                   row_names_gp = grid::gpar(fontsize = 8))
+draw(testing)
+dev.off()
+
+#length(ha)
+        
+col = list(bar = c("HeLa_WT" = "red", "HeLa_Dox" = "blue", "HeLa_Dox_R1" = "green", "HeLa_Dox_R2" = "forestgreen", "HeLa_NoDox_R" = "yellow", "KMS_WT" = "purple", "KMS_Dox" = "orchid",
+                                          "L363_WT" = "slateblue", "L363_R1" = "orange", "L363_R3" = "orangered", "Mia_WT" = "black", "Mia_R1" = "gray"))
+
+#################### DESEQ2 PART
+
+# Load metadata
+metadata <- read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/nathan_RNA_metadata_HeLa_Dox_vs_Rs.csv", header = T, sep = ",")
+#metadata <- read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/nathan_RNA_metadata.csv", header = T, sep = ",")
+
+rownames(metadata) <- metadata$id
+metadata$condition <- factor(metadata$condition)
+head(metadata)
+
+#counts_data <- "/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_Cleaned.txt"
+cts <- as.matrix(read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_HeLa_Dox_vs_Rs.txt",sep="\t",row.names="X.GENE"))
+#cts <- as.matrix(read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_Cleaned.txt",sep="\t",row.names="X.GENE"))
+
+# Make DESEQ object
+dds <- DESeqDataSetFromMatrix(countData=cts, # counts data resolved up above
+                              colData=metadata, 
+                              design=~condition)
+
+dds
+
+dds <- DESeq(dds)
+
+res <- results(dds)
+res <- res[order(res$log2FoldChange),]
+res.csv <- as.data.frame(res)
+
+# Order by pvalue
+res.csv <- res.csv[order(res.csv$pvalue),]
+# Create ranking
+rank.score <- sign(res.csv$log2FoldChange) * -log10(res.csv$pvalue)
+
+last.inf <- 50 # manually identify index of last inf
+for (x in (last.inf+1):1) { # fix infinites by adding 1 to last infinite and correcting to maintain pos/neg
+  new_vector <- c()
+  y <- abs(rank.score[x])+1
+  z <- sign(rank.score[x-1])
+  print(z)
+  rank.score[x-1] <- y*z
+}
+rank.score
+
+# Generate gene list
+genes <- rownames(res.csv)
+
+# Put into df
+rank.df <- data.frame(genes, rank.score)
+rownames(rank.df) <- rank.df$genes
+rank.df <- rank.df[order(-rank.df$rank.score),]
+rank.df
+
+write.table(rank.df, "/Users/gagled01/morganLab/bulkRNA_Nathan/Nathan_HeLa_Dox_vs_Rs_RankList_forGSEA.rnk",
+            sep = "\t",
+            quote = F,
+            row.names = F,
+            col.names = F)
+
+# Specific genes
+plotCounts(dds, gene="HCN1", intgroup="condition")
+plotCounts(dds, gene="IL24", intgroup="condition")
+plotCounts(dds, gene="CXCL2", intgroup="condition")
+plotCounts(dds, gene="ESM1", intgroup="condition")
+plotCounts(dds, gene="ABCB1", intgroup="condition")
+plotCounts(dds, gene="ANKRD1", intgroup="condition")
+
+
+# PCA plot
+vsdata <- vst(dds, blind=FALSE)
+plotPCA(vsdata, intgroup="condition") #using the DESEQ2 plotPCA fxn we can
+
+# Volcano plot
+#reset par
+par(mfrow=c(1,1))
+# Make a basic volcano plot
+with(res, plot(log2FoldChange, -log10(pvalue), pch=20, main="Volcano plot", xlim=c(-3,3)))
+
+# Add colored points: blue if padj<0.01, red if log2FC>1 and padj<0.05)
+with(subset(res, padj<.01 ), points(log2FoldChange, -log10(pvalue), pch=20, col="blue"))
+with(subset(res, padj<.01 & abs(log2FoldChange)>2), points(log2FoldChange, -log10(pvalue), pch=20, col="red"))
+```
+
+```{r}
+counts_data <- "/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_Mia_WT_vs_R1.txt"
+gencode_gene_list = "/Users/gagled01/morganLab/Waldenstroms/Bulk-RNA/gencode.v42.primary_assembly.basic.annotation.gtf.gz"
+
+raw_counts <- read.table(file = counts_data, header = F)
+
+colnames(raw_counts) <- read_delim(file = counts_data, 
+                                   delim = "\t",
+                                   col_names = T,
+                                   show_col_types = FALSE) %>%
+  colnames() %>% str_remove(pattern = "\\#")
+
+raw_counts <- tibble::column_to_rownames(raw_counts,
+                                       var = "GENE")
+
+total_counts <- raw_counts
+
+gencode_genes <- import(gencode_gene_list)
+gencode_genes <- unique(gencode_genes[gencode_genes$type == "CDS"]$gene_name)
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^MT-")]
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^IG")]
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^HLA")]
+
+total_counts <- total_counts %>%
+  dplyr::filter(rownames(total_counts) %in% gencode_genes)
+
+per_gene_exp_mean <- total_counts %>%
+  dplyr::mutate(exp_mean = round(rowSums(total_counts) / ncol(total_counts),
+                                 digits = 0)) %>%
+  dplyr::select(exp_mean) %>%
+  purrr::as_vector() %>%
+  as.numeric()
+
+total_counts <- total_counts %>%
+  dplyr::filter(rowSums(total_counts) / ncol(total_counts) > round(median(per_gene_exp_mean) / 10,
+                                                                     digits = 0))
+
+sce <- SingleCellExperiment(list(counts = total_counts), 
+                            colData = colnames(total_counts),
+                            rowData = rownames(total_counts))
+
+# Generate cell size factors
+sce <- computeSumFactors(sce)
+
+# Log normalize relative to pseudo-cell from calculated cell size factors
+sce_log <- logNormCounts(sce)
+
+# Identifying most variable genes
+dec <- modelGeneVar(sce_log)
+hvgs <- getTopHVGs(dec, n=100)
+#hvgs <- c("EPHB1", "SGSM1", "ITGB1", "BANK1", "CD74", "FCHSD2", "FCRL1", "AKT3", "CD24", "AFF3", "SOX5", "PYHIN1",
+#          "JCHAIN", "PRDM1", "PELI1", "MS4A1", "CD79A", "CD79B", "EIF2AK3", "MSI2", "FCRL5", "MSI2", "XBP1", "MZB1", "CD27")
+
+# Isolate normalized counts from SCE object
+norm_hm <- exprs(sce_log)
+
+hm_plotvals <- (norm_hm - rowMeans(norm_hm)) %>% as.data.frame()
+
+# Ordered gene selection
+ind <- NULL
+
+for (i in 1:length(hvgs)){
+  ind[i] <- which(rownames(hm_plotvals) == hvgs[i])
+}
+
+#Taking normalized plot values for top HVGs
+hm_plotvals <- hm_plotvals[ind,]
+
+# Create annotation of experimental conditions
+ha = HeatmapAnnotation(condition = c("Mia_WT", "Mia_WT", "Mia_WT", "Mia_R1", "Mia_R1", "Mia_R1"),
+                       col = list(condition = c("Mia_WT" = "black", "Mia_R1" = "gray"))
+                       )
+
+pdf(file = "/Users/gagled01/morganLab/bulkRNA_Nathan/figures/BulkRNA-Heatmap_KMS_Mia_WT_vs_R1.png", height = 10, width = 10)
+testing <- Heatmap(as.matrix(hm_plotvals), name = "mat", 
+                   show_column_names = FALSE, 
+                   top_annotation = ha, 
+                   column_km = 3,
+                   row_names_gp = grid::gpar(fontsize = 8))
+draw(testing)
+dev.off()
+
+#length(ha)
+        
+col = list(bar = c("HeLa_WT" = "red", "HeLa_Dox" = "blue", "HeLa_Dox_R1" = "green", "HeLa_Dox_R2" = "forestgreen", "HeLa_NoDox_R" = "yellow", "KMS_WT" = "purple", "KMS_Dox" = "orchid",
+                                          "L363_WT" = "slateblue", "L363_R1" = "orange", "L363_R3" = "orangered", "Mia_WT" = "black", "Mia_R1" = "gray"))
+
+#################### DESEQ2 PART
+
+# Load metadata
+metadata <- read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/nathan_RNA_metadata_Mia_WT_vs_R1.csv", header = T, sep = ",")
+#metadata <- read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/nathan_RNA_metadata.csv", header = T, sep = ",")
+
+rownames(metadata) <- metadata$id
+metadata$condition <- factor(metadata$condition)
+head(metadata)
+
+#counts_data <- "/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_Cleaned.txt"
+cts <- as.matrix(read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_Mia_WT_vs_R1.txt",sep="\t",row.names="X.GENE"))
+#cts <- as.matrix(read.csv("/Users/gagled01/morganLab/bulkRNA_Nathan/rna-star-outputs/quant.featurecounts.counts.unstr_Cleaned.txt",sep="\t",row.names="X.GENE"))
+
+# Make DESEQ object
+dds <- DESeqDataSetFromMatrix(countData=cts, # counts data resolved up above
+                              colData=metadata, 
+                              design=~condition)
+
+dds
+
+dds <- DESeq(dds)
+
+res <- results(dds)
+res <- res[order(res$log2FoldChange),]
+res.csv <- as.data.frame(res)
+
+# Order by pvalue
+res.csv <- res.csv[order(res.csv$pvalue),]
+# Create ranking
+rank.score <- sign(res.csv$log2FoldChange) * -log10(res.csv$pvalue)
+
+last.inf <- 68 # manually identify index of last inf
+for (x in (last.inf+1):1) { # fix infinites by adding 1 to last infinite and correcting to maintain pos/neg
+  new_vector <- c()
+  y <- abs(rank.score[x])+1
+  z <- sign(rank.score[x-1])
+  print(z)
+  rank.score[x-1] <- y*z
+}
+rank.score
+
+# Generate gene list
+genes <- rownames(res.csv)
+
+# Put into df
+rank.df <- data.frame(genes, rank.score)
+rownames(rank.df) <- rank.df$genes
+rank.df <- rank.df[order(-rank.df$rank.score),]
+rank.df
+
+write.table(rank.df, "/Users/gagled01/morganLab/bulkRNA_Nathan/Nathan_Mia_WT_vs_R1_RankList_forGSEA.rnk",
+            sep = "\t",
+            quote = F,
+            row.names = F,
+            col.names = F)
+
+# Specific genes
+plotCounts(dds, gene="ITGB4", intgroup="condition")
+plotCounts(dds, gene="CD40", intgroup="condition")
+plotCounts(dds, gene="VCAN", intgroup="condition")
+plotCounts(dds, gene="SNAI2", intgroup="condition")
+
+
+# PCA plot
+vsdata <- vst(dds, blind=FALSE)
+plotPCA(vsdata, intgroup="condition") #using the DESEQ2 plotPCA fxn we can
+
+# Volcano plot
+#reset par
+par(mfrow=c(1,1))
+# Make a basic volcano plot
+with(res, plot(log2FoldChange, -log10(pvalue), pch=20, main="Volcano plot", xlim=c(-3,3)))
+
+# Add colored points: blue if padj<0.01, red if log2FC>1 and padj<0.05)
+with(subset(res, padj<.01 ), points(log2FoldChange, -log10(pvalue), pch=20, col="blue"))
+with(subset(res, padj<.01 & abs(log2FoldChange)>2), points(log2FoldChange, -log10(pvalue), pch=20, col="red"))
+```
+
+# GSEA #
+
+```{r}
+library(msigdbr)
+
+```
+

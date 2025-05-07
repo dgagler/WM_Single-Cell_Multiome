@@ -1,0 +1,984 @@
+---
+title: "ArchR_Analysis_Pt2"
+output: html_document
+date: "2024-01-17"
+---
+
+2nd half of the markdown titled ArchR_Analysis. This basically contains everything that was done AFTER scRNA-scATAC integration. I'll be picking it off with the dataset after removing non-B cells
+
+```{r}
+library(ArchR)
+library(Seurat)
+addArchRThreads(threads = 1)
+#addArchRGenome("hg38")
+options(future.globals.maxSize=100000000000000000000000) 
+```
+Load existing ArchR project
+```{r}
+archR <- loadArchRProject(path = "/Users/gagled01/morganLab/Waldenstroms/singlecell/data/ATAC_fragments/ArchR_ReferenceAdd_B-LineageOnly")
+```
+Rerun clustering and batch correction
+```{r}
+archR <- addIterativeLSI(
+  ArchRProj = archR,
+  useMatrix = "TileMatrix",
+  name = "IterativeLSI_BLineage_Recluster",
+  iterations = 2,
+  clusterParams = list( # based on Seurat's FindClusters()
+    resolution = c(0.25),
+    sampleCells = 2000,
+    n.start = 10
+  ),
+  varFeatures = 20000,
+  dimsToUse = 1:20,
+  force = T
+)
+
+archR <- addClusters(
+  input = archR,
+  reducedDims = "IterativeLSI_BLineage_Recluster",
+  method = "Seurat",
+  name = "BLin_Clusters",
+  resolution = 0.9,
+  force = T
+)
+
+archR <- addUMAP(
+    ArchRProj = archR, 
+    reducedDims = "IterativeLSI_BLineage_Recluster", 
+    name = "BLineage_Recluster_UMAP", 
+    nNeighbors = 30, 
+    minDist = 0.5, 
+    metric = "cosine",
+    force = T
+)
+
+p1 <- plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "samplesClean", embedding = "BLineage_Recluster_UMAP")
+p2 <- plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "BLin_Clusters", embedding = "BLineage_Recluster_UMAP")
+p3 <- plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "condition", embedding = "BLineage_Recluster_UMAP")
+p4 <- plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "predictedGroup_Un", embedding = "BLineage_Recluster_UMAP") #+ #+ 
+#+ #+ 
+plotPDF(p1, p2, p3, p4, name = "WM_ReferenceAddIntegrated_BLineageOnly_Reclustered_BasicUMAPs.pdf", ArchRProj = archR, addDOC = FALSE, width = 5, height = 5)
+```
+
+# Dirty way to get celltype relative abundance by patient dataframe for stacked barplots
+```{r}
+############### NYU SAMPLES
+p01.076.ids <- BiocGenerics::which(archR$samplesClean %in% "01-076")
+p01.076.celltypes <- archR$predictedGroup_Un[p01.076.ids]
+p01.115.ids <- BiocGenerics::which(archR$samplesClean %in% "01-115")
+p01.115.celltypes <- archR$predictedGroup_Un[p01.115.ids]
+p01.131.ids <- BiocGenerics::which(archR$samplesClean %in% "01-131")
+p01.131.celltypes <- archR$predictedGroup_Un[p01.131.ids]
+p01.163.ids <- BiocGenerics::which(archR$samplesClean %in% "01-163")
+p01.163.celltypes <- archR$predictedGroup_Un[p01.163.ids]
+p01.190.ids <- BiocGenerics::which(archR$samplesClean %in% "01-190")
+p01.190.celltypes <- archR$predictedGroup_Un[p01.190.ids]
+p04.003.ids <- BiocGenerics::which(archR$samplesClean %in% "04-003")
+p04.003.celltypes <- archR$predictedGroup_Un[p04.003.ids]
+p04.006.ids <- BiocGenerics::which(archR$samplesClean %in% "04-006")
+p04.006.celltypes <- archR$predictedGroup_Un[p04.006.ids]
+
+############### GUSTAVE ROUSSY SAMPLES
+
+wm25.ids <- BiocGenerics::which(archR$samplesClean %in% "WM25")
+wm25.celltypes <- archR$predictedGroup_Un[wm25.ids]
+wm43.ids <- BiocGenerics::which(archR$samplesClean %in% "WM43")
+wm43.celltypes <- archR$predictedGroup_Un[wm43.ids]
+wm46.ids <- BiocGenerics::which(archR$samplesClean %in% "WM46")
+wm46.celltypes <- archR$predictedGroup_Un[wm46.ids]
+wm47.ids <- BiocGenerics::which(archR$samplesClean %in% "WM47")
+wm47.celltypes <- archR$predictedGroup_Un[wm47.ids]
+wm54.ids <- BiocGenerics::which(archR$samplesClean %in% "WM54")
+wm54.celltypes <- archR$predictedGroup_Un[wm54.ids]
+wm65.ids <- BiocGenerics::which(archR$samplesClean %in% "WM65")
+wm65.celltypes <- archR$predictedGroup_Un[wm65.ids]
+###############
+
+bcp003.ids <- BiocGenerics::which(archR$samplesClean %in% "BCP003")
+bcp003.celltypes <- archR$predictedGroup_Un[bcp003.ids]
+bcp004.ids <- BiocGenerics::which(archR$samplesClean %in% "BCP004")
+bcp004.celltypes <- archR$predictedGroup_Un[bcp004.ids]
+bcp005.ids <- BiocGenerics::which(archR$samplesClean %in% "BCP005")
+bcp005.celltypes <- archR$predictedGroup_Un[bcp005.ids]
+bcp006.ids <- BiocGenerics::which(archR$samplesClean %in% "BCP006")
+bcp006.celltypes <- archR$predictedGroup_Un[bcp006.ids]
+
+###############
+stanford1.ids <- BiocGenerics::which(archR$samplesClean %in% "stanford_1")
+stanford1.celltypes <- archR$predictedGroup_Un[stanford1.ids]
+stanford2.ids <- BiocGenerics::which(archR$samplesClean %in% "stanford_2")
+stanford2.celltypes <- archR$predictedGroup_Un[stanford2.ids]
+stanford3.ids <- BiocGenerics::which(archR$samplesClean %in% "stanford_3")
+stanford3.celltypes <- archR$predictedGroup_Un[stanford3.ids]
+
+library(tidyverse)
+
+# Relative abundance by patient...requires a lot of fennegling bcuz different patients have different cell populations
+p01.076_relabun <- data.frame(table(p01.076.celltypes)/sum(table(p01.076.celltypes)) * 100)
+p01.076_relabun$Patient <- "01-076"
+colnames(p01.076_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$predictedGroup_Un, p01.076_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+missing.df$Patient <- "01-076"
+p01.076.mergedf <- rbind(p01.076_relabun, missing.df)
+
+p01.115_relabun <- data.frame(table(p01.115.celltypes)/sum(table(p01.115.celltypes)) * 100)
+p01.115_relabun$Patient <- "01-115"
+colnames(p01.115_relabun)[1] <- "Celltype"
+# missing.celltypes <- setdiff(archR$predictedGroup_Un, p01.115_relabun$Celltype)
+# missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+# colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+# missing.df$Celltype <- missing.celltypes
+# missing.df$Patient <- "01-115"
+# p01.115.mergedf <- rbind(p01.115_relabun, missing.df)
+p01.115.mergedf <- p01.115_relabun # because it has all celltypes!
+
+p01.131_relabun <- data.frame(table(p01.131.celltypes)/sum(table(p01.131.celltypes)) * 100)
+p01.131_relabun$Patient <- "01-131"
+colnames(p01.131_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$predictedGroup_Un, p01.131_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+missing.df$Patient <- "01-131"
+p01.131.mergedf <- rbind(p01.131_relabun, missing.df)
+
+p01.163_relabun <- data.frame(table(p01.163.celltypes)/sum(table(p01.163.celltypes)) * 100)
+p01.163_relabun$Patient <- "01-163"
+colnames(p01.163_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$predictedGroup_Un, p01.163_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+missing.df$Patient <- "01-163"
+p01.163.mergedf <- rbind(p01.163_relabun, missing.df)
+
+p01.190_relabun <- data.frame(table(p01.190.celltypes)/sum(table(p01.190.celltypes)) * 100)
+p01.190_relabun$Patient <- "01-190"
+colnames(p01.190_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$predictedGroup_Un, p01.190_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+missing.df$Patient <- "01-190"
+p01.190.mergedf <- rbind(p01.190_relabun, missing.df)
+
+p04.003_relabun <- data.frame(table(p04.003.celltypes)/sum(table(p04.003.celltypes)) * 100)
+p04.003_relabun$Patient <- "04-003"
+colnames(p04.003_relabun)[1] <- "Celltype"
+# missing.celltypes <- setdiff(archR$predictedGroup_Un, p04.003_relabun$Celltype)
+# missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+# colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+# missing.df$Celltype <- missing.celltypes
+# missing.df$Patient <- "04-003"
+# p04.003.mergedf <- rbind(p04.003_relabun, missing.df)
+p04.003.mergedf <- p04.003_relabun # because it has all celltypes!
+
+p04.006_relabun <- data.frame(table(p04.006.celltypes)/sum(table(p04.006.celltypes)) * 100)
+p04.006_relabun$Patient <- "04-006"
+colnames(p04.006_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$predictedGroup_Un, p04.006_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+missing.df$Patient <- "04-006"
+p04.006.mergedf <- rbind(p04.006_relabun, missing.df)
+
+###################################### GOUSTAV ROUSSY SAMPLES
+
+wm25_relabun <- data.frame(table(wm25.celltypes)/sum(table(wm25.celltypes)) * 100)
+wm25_relabun$Patient <- "WM25"
+colnames(wm25_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$predictedGroup_Un, wm25_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+missing.df$Patient <- "WM25"
+wm25.mergedf <- rbind(wm25_relabun, missing.df)
+
+wm43_relabun <- data.frame(table(wm43.celltypes)/sum(table(wm43.celltypes)) * 100)
+wm43_relabun$Patient <- "WM43"
+colnames(wm43_relabun)[1] <- "Celltype"
+# missing.celltypes <- setdiff(archR$predictedGroup_Un, wm43_relabun$Celltype)
+# missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+# colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+# missing.df$Celltype <- missing.celltypes
+# missing.df$Patient <- "Wm43"
+# wm43.mergedf <- rbind(wm43_relabun, missing.df)
+wm43.mergedf <- wm43_relabun # because it has all celltypes
+
+wm46_relabun <- data.frame(table(wm46.celltypes)/sum(table(wm46.celltypes)) * 100)
+wm46_relabun$Patient <- "WM46"
+colnames(wm46_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$predictedGroup_Un, wm46_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+missing.df$Patient <- "WM46"
+wm46.mergedf <- rbind(wm46_relabun, missing.df)
+
+wm47_relabun <- data.frame(table(wm47.celltypes)/sum(table(wm47.celltypes)) * 100)
+wm47_relabun$Patient <- "WM47"
+colnames(wm47_relabun)[1] <- "Celltype"
+# missing.celltypes <- setdiff(archR$predictedGroup_Un, wm47_relabun$Celltype)
+# missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+# colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+# missing.df$Celltype <- missing.celltypes
+# missing.df$Patient <- "WM47"
+# wm47.mergedf <- rbind(wm47_relabun, missing.df)
+wm47.mergedf <- wm47_relabun # because it has all celltypes
+
+wm54_relabun <- data.frame(table(wm54.celltypes)/sum(table(wm54.celltypes)) * 100)
+wm54_relabun$Patient <- "WM54"
+colnames(wm54_relabun)[1] <- "Celltype"
+# missing.celltypes <- setdiff(archR$predictedGroup_Un, wm54_relabun$Celltype)
+# missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+# colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+# missing.df$Celltype <- missing.celltypes
+# missing.df$Patient <- "WM54"
+# wm54.mergedf <- rbind(wm54_relabun, missing.df)
+wm54.mergedf <- wm54_relabun # because it has all celltypes
+
+wm65_relabun <- data.frame(table(wm65.celltypes)/sum(table(wm65.celltypes)) * 100)
+wm65_relabun$Patient <- "WM65"
+colnames(wm65_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$predictedGroup_Un, wm65_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+missing.df$Patient <- "WM65"
+wm65.mergedf <- rbind(wm65_relabun, missing.df)
+
+###################################### REFERENCE DATA
+
+bcp003_relabun <- data.frame(table(bcp003.celltypes)/sum(table(bcp003.celltypes)) * 100)
+bcp003_relabun$Patient <- "BCP003"
+colnames(bcp003_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$predictedGroup_Un, bcp003_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+missing.df$Patient <- "BCP003"
+bcp003.mergedf <- rbind(bcp003_relabun, missing.df)
+
+bcp004_relabun <- data.frame(table(bcp004.celltypes)/sum(table(bcp004.celltypes)) * 100)
+bcp004_relabun$Patient <- "BCP004"
+colnames(bcp004_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$predictedGroup_Un, bcp004_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+missing.df$Patient <- "BCP004"
+bcp004.mergedf <- rbind(bcp004_relabun, missing.df)
+
+bcp005_relabun <- data.frame(table(bcp005.celltypes)/sum(table(bcp005.celltypes)) * 100)
+bcp005_relabun$Patient <- "BCP005"
+colnames(bcp005_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$predictedGroup_Un, bcp005_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+missing.df$Patient <- "BCP005"
+bcp005.mergedf <- rbind(bcp005_relabun, missing.df)
+
+bcp006_relabun <- data.frame(table(bcp006.celltypes)/sum(table(bcp006.celltypes)) * 100)
+bcp006_relabun$Patient <- "BCP006"
+colnames(bcp006_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$predictedGroup_Un, bcp006_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+missing.df$Patient <- "BCP006"
+bcp006.mergedf <- rbind(bcp006_relabun, missing.df)
+
+#########################################
+
+stanford1_relabun <- data.frame(table(stanford1.celltypes)/sum(table(stanford1.celltypes)) * 100)
+stanford1_relabun$Patient <- "stanford1"
+colnames(stanford1_relabun)[1] <- "Celltype"
+# missing.celltypes <- setdiff(archR$predictedGroup_Un, stanford1_relabun$Celltype)
+# missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+# colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+# missing.df$Celltype <- missing.celltypes
+# missing.df$Patient <- "stanford1"
+# stanford1.mergedf <- rbind(stanford1_relabun, missing.df)
+stanford1.mergedf <- stanford1_relabun # because it has all celltypes
+
+stanford2_relabun <- data.frame(table(stanford2.celltypes)/sum(table(stanford2.celltypes)) * 100)
+stanford2_relabun$Patient <- "stanford2"
+colnames(stanford2_relabun)[1] <- "Celltype"
+# missing.celltypes <- setdiff(archR$predictedGroup_Un, stanford2_relabun$Celltype)
+# missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+# colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+# missing.df$Celltype <- missing.celltypes
+# missing.df$Patient <- "stanford2"
+# stanford2.mergedf <- rbind(stanford2_relabun, missing.df)
+stanford2.mergedf <- stanford2_relabun # because it has all celltypes
+
+stanford3_relabun <- data.frame(table(stanford3.celltypes)/sum(table(stanford3.celltypes)) * 100)
+stanford3_relabun$Patient <- "stanford3"
+colnames(stanford3_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$predictedGroup_Un, stanford3_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes # not missing any types
+missing.df$Patient <- "stanford3"
+stanford3.mergedf <- rbind(stanford3_relabun)
+
+allpatient_df <- rbind(p01.076.mergedf, p01.115.mergedf, p01.131.mergedf, p01.163.mergedf, p01.190.mergedf, p04.003.mergedf, p04.006.mergedf, 
+                       wm25.mergedf, wm43.mergedf, wm46.mergedf, wm47.mergedf, wm54.mergedf, wm65.mergedf,
+                       bcp003.mergedf, bcp004.mergedf, bcp005.mergedf, bcp006.mergedf, 
+                       stanford1.mergedf, stanford2.mergedf, stanford3.mergedf)
+```
+
+# Stacked bar plot of cell type relative abundances
+```{r}
+# factor so plasma cells come up first
+allpatient_df$Celltype <- factor(allpatient_df$Celltype, levels = c("Plasma cells", "Memory B cells", "Naive B cells", "Germinal center B cells", "Proliferative germinal center B cells", "Small pre-B cells", "Large pre-B cells", "Pro-B cells"))
+
+# similar w patients
+allpatient_df$Patient <- factor(allpatient_df$Patient, levels = c("01-076", "01-115", "01-131", "01-163", "01-190", "04-003", "04-006",
+                                                                  "WM25", "WM43", "WM46", "WM47", "WM54", "WM65",
+                                                                  "BCP003", "BCP004", "BCP005", "BCP006",
+                                                                  "stanford1", "stanford2", "stanford3"))
+allpatient_df$Patient <- droplevels(allpatient_df$Patient)
+
+# Stacked barplot
+ggplot(allpatient_df, aes(fill=Celltype, y=Freq, x=Patient)) + 
+    geom_bar(position="stack", stat="identity") + 
+  xlab(label = "Patient") + ylab("Relative Abundance") + theme_minimal() + 
+  theme(axis.text.x = element_text(size = "10", angle = 90, vjust = 0.5, hjust = 0.5))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/WM_ReferenceDataAdd_BcellsOnly_StackedBarPlot.png", width = 12, height = 8)
+```
+# Illegally subset project to get plasma cell %s
+```{r}
+idxSample <- BiocGenerics::which(archR$predictedGroup_Un %in% "Plasma cells")
+cellsSample <- archR$cellNames[idxSample]
+illegal.archR.PC <- archR[cellsSample, ]
+table(illegal.archR.PC$samplesClean)/table(archR$samplesClean) *100
+
+idxSample <- BiocGenerics::which(archR$predictedGroup_Un %in% "Memory B cells")
+cellsSample <- archR$cellNames[idxSample]
+illegal.archR.PC <- archR[cellsSample, ]
+table(illegal.archR.PC$samplesClean)/table(archR$samplesClean) *100
+
+rm(illegal.archR.PC)
+```
+# Adding metadata
+```{r}
+archR$hasPC <- archR$samplesClean
+pc.1 <- gsub("01-076", "-", archR$hasPC)
+archR$hasPC <- pc.1
+pc.2 <- gsub("01-115", "-", archR$hasPC)
+archR$hasPC <- pc.2
+pc.3 <- gsub("01-131", "+", archR$hasPC)
+archR$hasPC <- pc.3
+pc.4 <- gsub("01-163", "+", archR$hasPC)
+archR$hasPC <- pc.4
+pc.5 <- gsub("01-190", "+", archR$hasPC)
+archR$hasPC <- pc.5
+pc.6 <- gsub("04-003", "+", archR$hasPC)
+archR$hasPC <- pc.6
+pc.7 <- gsub("04-006", "-", archR$hasPC)
+archR$hasPC <- pc.7
+pc.8 <- gsub("BCP00.", "NA", archR$hasPC)
+archR$hasPC <- pc.8
+pc.9 <- gsub("stanford_.", "NA", archR$hasPC)
+archR$hasPC <- pc.9
+# UPDATE
+pc.10 <- gsub("WM25", "+", archR$hasPC)
+archR$hasPC <- pc.10
+pc.11 <- gsub("WM43", "+", archR$hasPC)
+archR$hasPC <- pc.11
+pc.12 <- gsub("WM46", "-", archR$hasPC)
+archR$hasPC <- pc.12
+pc.13 <- gsub("WM47", "-", archR$hasPC)
+archR$hasPC <- pc.13
+pc.14 <- gsub("WM54", "-", archR$hasPC)
+archR$hasPC <- pc.14
+pc.15 <- gsub("WM65", "-", archR$hasPC)
+archR$hasPC <- pc.15
+table(archR$hasPC)
+
+# MYD88 mutations
+archR$myd88 <- archR$samplesClean
+myd88.1 <- gsub("01-190", "+", archR$myd88)
+archR$myd88 <- myd88.1
+myd88.2 <- gsub("04-003", "+", archR$myd88)
+archR$myd88 <- myd88.2
+myd88.3 <- gsub("01-...", "+", archR$myd88)
+archR$myd88 <- myd88.3
+myd88.4 <- gsub("04-...", "+", archR$myd88)
+archR$myd88 <- myd88.4
+myd88.5 <- gsub("WM25", "+", archR$myd88)
+archR$myd88 <- myd88.5
+myd88.6 <- gsub("WM43", "+", archR$myd88)
+archR$myd88 <- myd88.6
+myd88.7 <- gsub("WM46", "+", archR$myd88)
+archR$myd88 <- myd88.7
+myd88.8 <- gsub("WM47", "+", archR$myd88)
+archR$myd88 <- myd88.8
+myd88.9 <- gsub("WM54", "+", archR$myd88)
+archR$myd88 <- myd88.9
+myd88.10 <- gsub("WM65", "+", archR$myd88)
+archR$myd88 <- myd88.10
+myd88.11 <- gsub("BCP00.", "NA", archR$myd88)
+archR$myd88 <- myd88.11
+myd88.12 <- gsub("stanford_.", "NA", archR$myd88)
+archR$myd88 <- myd88.12
+table(archR$myd88)
+
+# CXCR4 mutations
+archR$cxcr4 <- archR$samplesClean
+cxcr4.1 <- gsub("01-190", "+", archR$cxcr4)
+archR$cxcr4 <- cxcr4.1
+cxcr4.2 <- gsub("04-006", "+", archR$cxcr4)
+archR$cxcr4 <- cxcr4.2
+cxcr4.3 <- gsub("01-...", "-", archR$cxcr4)
+archR$cxcr4 <- cxcr4.3
+cxcr4.4 <- gsub("04-...", "-", archR$cxcr4)
+archR$cxcr4 <- cxcr4.4
+cxcr4.5 <- gsub("WM25", "-", archR$cxcr4)
+archR$cxcr4 <- cxcr4.5
+cxcr4.6 <- gsub("WM43", "+", archR$cxcr4)
+archR$cxcr4 <- cxcr4.6
+cxcr4.7 <- gsub("WM46", "-", archR$cxcr4)
+archR$cxcr4 <- cxcr4.7
+cxcr4.8 <- gsub("WM47", "-", archR$cxcr4)
+archR$cxcr4 <- cxcr4.8
+cxcr4.9 <- gsub("WM54", "-", archR$cxcr4)
+archR$cxcr4 <- cxcr4.9
+cxcr4.10 <- gsub("WM65", "+", archR$cxcr4)
+archR$cxcr4 <- cxcr4.10
+cxcr4.11 <- gsub("BCP00.", "NA", archR$cxcr4)
+archR$cxcr4 <- cxcr4.11
+cxcr4.12 <- gsub("stanford_.", "NA", archR$cxcr4)
+archR$cxcr4 <- cxcr4.12
+table(archR$cxcr4)
+
+# ARID1A mutations
+archR$arid1a <- archR$samplesClean
+arid1a.1 <- gsub("01-190", "NA", archR$arid1a)
+archR$arid1a <- arid1a.1
+arid1a.2 <- gsub("04-003", "NA", archR$arid1a)
+archR$arid1a <- arid1a.2
+arid1a.3 <- gsub("01-...", "NA", archR$arid1a)
+archR$arid1a <- arid1a.3
+arid1a.4 <- gsub("04-...", "NA", archR$arid1a)
+archR$arid1a <- arid1a.4
+arid1a.5 <- gsub("WM25", "-", archR$arid1a)
+archR$arid1a <- arid1a.5
+arid1a.6 <- gsub("WM43", "-", archR$arid1a)
+archR$arid1a <- arid1a.6
+arid1a.7 <- gsub("WM46", "-", archR$arid1a)
+archR$arid1a <- arid1a.7
+arid1a.8 <- gsub("WM47", "+", archR$arid1a)
+archR$arid1a <- arid1a.8
+arid1a.9 <- gsub("WM54", "-", archR$arid1a)
+archR$arid1a <- arid1a.9
+arid1a.10 <- gsub("WM65", "-", archR$arid1a)
+archR$arid1a <- arid1a.10
+arid1a.11 <- gsub("BCP00.", "NA", archR$arid1a)
+archR$arid1a <- arid1a.11
+arid1a.12 <- gsub("stanford_.", "NA", archR$arid1a)
+archR$arid1a <- arid1a.12
+table(archR$arid1a)  
+
+# TP53 mutations
+archR$tp53 <- archR$samplesClean
+tp53.1 <- gsub("01-190", "NA", archR$tp53)
+archR$tp53 <- tp53.1
+tp53.2 <- gsub("04-003", "NA", archR$tp53)
+archR$tp53 <- tp53.2
+tp53.3 <- gsub("01-...", "NA", archR$tp53)
+archR$tp53 <- tp53.3
+tp53.4 <- gsub("04-...", "NA", archR$tp53)
+archR$tp53 <- tp53.4
+tp53.5 <- gsub("WM25", "-", archR$tp53)
+archR$tp53 <- tp53.5
+tp53.6 <- gsub("WM43", "-", archR$tp53)
+archR$tp53 <- tp53.6
+tp53.7 <- gsub("WM46", "-", archR$tp53)
+archR$tp53 <- tp53.7
+tp53.8 <- gsub("WM47", "-", archR$tp53)
+archR$tp53 <- tp53.8
+tp53.9 <- gsub("WM54", "-", archR$tp53)
+archR$tp53 <- tp53.9
+tp53.10 <- gsub("WM65", "+", archR$tp53)
+archR$tp53 <- tp53.10
+tp53.11 <- gsub("BCP00.", "NA", archR$tp53)
+archR$tp53 <- tp53.11
+tp53.12 <- gsub("stanford_.", "NA", archR$tp53)
+archR$tp53 <- tp53.12
+table(archR$tp53)  
+
+# MLL2 mutations
+archR$mll2 <- archR$samplesClean
+mll2.1 <- gsub("01-190", "NA", archR$mll2)
+archR$mll2 <- mll2.1
+mll2.2 <- gsub("04-003", "NA", archR$mll2)
+archR$mll2 <- mll2.2
+mll2.3 <- gsub("01-...", "NA", archR$mll2)
+archR$mll2 <- mll2.3
+mll2.4 <- gsub("04-...", "NA", archR$mll2)
+archR$mll2 <- mll2.4
+mll2.5 <- gsub("WM25", "NA", archR$mll2)
+archR$mll2 <- mll2.5
+mll2.6 <- gsub("WM43", "+", archR$mll2)
+archR$mll2 <- mll2.6
+mll2.7 <- gsub("WM46", "-", archR$mll2)
+archR$mll2 <- mll2.7
+mll2.8 <- gsub("WM47", "+", archR$mll2)
+archR$mll2 <- mll2.8
+mll2.9 <- gsub("WM54", "-", archR$mll2)
+archR$mll2 <- mll2.9
+mll2.10 <- gsub("WM65", "-", archR$mll2)
+archR$mll2 <- mll2.10
+mll2.11 <- gsub("BCP00.", "NA", archR$mll2)
+archR$mll2 <- mll2.11
+mll2.12 <- gsub("stanford_.", "NA", archR$mll2)
+archR$mll2 <- mll2.12
+table(archR$mll2)  
+
+# hist1h1e mutations
+archR$hist1h1e <- archR$samplesClean
+hist1h1e.1 <- gsub("01-190", "NA", archR$hist1h1e)
+archR$hist1h1e <- hist1h1e.1
+hist1h1e.2 <- gsub("04-003", "NA", archR$hist1h1e)
+archR$hist1h1e <- hist1h1e.2
+hist1h1e.3 <- gsub("01-...", "NA", archR$hist1h1e)
+archR$hist1h1e <- hist1h1e.3
+hist1h1e.4 <- gsub("04-...", "NA", archR$hist1h1e)
+archR$hist1h1e <- hist1h1e.4
+hist1h1e.5 <- gsub("WM25", "-", archR$hist1h1e)
+archR$hist1h1e <- hist1h1e.5
+hist1h1e.6 <- gsub("WM43", "-", archR$hist1h1e)
+archR$hist1h1e <- hist1h1e.6
+hist1h1e.7 <- gsub("WM46", "+", archR$hist1h1e)
+archR$hist1h1e <- hist1h1e.7
+hist1h1e.8 <- gsub("WM47", "+", archR$hist1h1e)
+archR$hist1h1e <- hist1h1e.8
+hist1h1e.9 <- gsub("WM54", "-", archR$hist1h1e)
+archR$hist1h1e <- hist1h1e.9
+hist1h1e.10 <- gsub("WM65", "+", archR$hist1h1e)
+archR$hist1h1e <- hist1h1e.10
+hist1h1e.11 <- gsub("BCP00.", "NA", archR$hist1h1e)
+archR$hist1h1e <- hist1h1e.11
+hist1h1e.12 <- gsub("stanford_.", "NA", archR$hist1h1e)
+archR$hist1h1e <- hist1h1e.12
+table(archR$hist1h1e)  
+
+p1 <- plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "hasPC", embedding = "BLineage_Recluster_UMAP")
+p2 <- plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "myd88", embedding = "BLineage_Recluster_UMAP")
+p3 <- plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "cxcr4", embedding = "BLineage_Recluster_UMAP")
+p4 <- plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "arid1a", embedding = "BLineage_Recluster_UMAP")
+p5 <- plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "tp53", embedding = "BLineage_Recluster_UMAP")
+p6 <- plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "mll2", embedding = "BLineage_Recluster_UMAP")
+p7 <- plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "hist1h1e", embedding = "BLineage_Recluster_UMAP")
+
+plotPDF(p1, p2, p3, p4, p5, p6, p7, name = "WM_ReferenceAddIntegrated_BLineageOnly_MutationStatus_UMAPs.pdf", ArchRProj = archR, addDOC = FALSE, width = 5, height = 5)
+```
+
+##########################################
+### CHAPTER 9 - PSEUDO-BULK REPLICATES ###
+##########################################
+
+scATAC is binary, meaning any locus is either accessible or not, making some analyses impossible. Furthermore, we need replicates to get statistical significance! In single-cell this is done via pseudo-bulking
+
+ArchR makes pseudo-bulk replicates using a tiered priority approach. The user specifies the min and max replicates, the min and max number of cells per replicate, and the sampling ratio to be used if a particular grouping lacks sufficient cells (for ex, sampling ratio of 0.8 means cells can be sampld without replacement up to 80% of the total number of cells per replicate)
+
+Cell groups to be used are often clusters called by ArchR
+
+Makes X replicates PER grouping (aka cluster in most cases). Default is min 2 reps and 5 max
+```{r}
+library("BSgenome.Hsapiens.UCSC.hg38")
+
+archR <- addGroupCoverages(ArchRProj = archR, groupBy = "BLin_NoProgen_Clusters",
+                                minRep = 2, maxReplicates = 5, minCells = 40, maxCells = 500, sampleRatio = 0.8)
+```
+
+##################################
+### CHAPTER 10 - CALLING PEAKS ###
+##################################
+
+Peaks are basically regions of the genome with open accessibility.
+
+ArchR opts to use 501bp fixed-width peak ranges as opposed to variable peaks. This means that you don't need to normalize, in part bcuz most peaks are less than 501bp anyway. Furthermore, using variable peaks makes it hard to merge peaks between samples. Overall not worth
+
+ArchR uses an Iterative Overlap approach: this involves ranking the most significant peaks. The most significant peak is retained and any peaks that overlap it are removed. This process is removed until there are no more peaks
+```{r}
+archR <- addReproduciblePeakSet(
+    ArchRProj = archR, 
+    groupBy = "MBC_PC_Reclustering"
+)
+
+#getPeakSet(archR)
+```
+Add Peak Matrix
+```{r}
+archR <- addPeakMatrix(archR)
+```
+Save it out
+```{r}
+saveArchRProject(ArchRProj = archR, outputDirectory = "WM_squeesqquawwww", load = FALSE)
+```
+
+################################
+### IDENTIFYING MARKER PEAKS ###
+################################
+```{r}
+archR.test <- loadArchRProject(path = "/Users/gagled01/morganLab/Waldenstroms/Waldenstroms_Git/WM_2024_PeaksAdded")
+```
+
+```{r}
+markersPeaks <- getMarkerFeatures(
+    ArchRProj = archR, 
+    useMatrix = "PeakMatrix", 
+    groupBy = "NoControls_Reclustering",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  testMethod = "wilcoxon"
+)
+
+markersPeaks
+
+markerList <- getMarkers(markersPeaks, cutOff = "FDR <= 0.01 & Log2FC >= 1")
+markerList <- getMarkers(markersPeaks, cutOff = "FDR <= 0.01 & Log2FC >= 1", returnGR = TRUE)
+markerList$`C15`
+```
+# Visualize Marker Peaks via heatmap
+```{r}
+heatmapPeaks <- plotMarkerHeatmap(
+  seMarker = markersPeaks, 
+  cutOff = "FDR <= 0.1 & Log2FC >= 0.5",
+  transpose = TRUE
+)
+
+draw(heatmapPeaks, heatmap_legend_side = "bot", annotation_legend_side = "bot")
+
+plotPDF(heatmapPeaks, name = "Peak-Marker-Heatmap", width = 8, height = 6, ArchRProj = archR, addDOC = FALSE)
+```
+Per cell type
+```{r}
+pma <- plotMarkers(seMarker = markersPeaks, name = "C15", cutOff = "FDR <= 0.1 & Log2FC >= 1", plotAs = "Volcano")
+pma2 <- plotMarkers(seMarker = markersPeaks, name = "C16", cutOff = "FDR <= 0.1 & Log2FC >= 1", plotAs = "Volcano")
+pma3 <- plotMarkers(seMarker = markersPeaks, name = "C17", cutOff = "FDR <= 0.1 & Log2FC >= 1", plotAs = "Volcano")
+
+plotPDF(pma, pma2, pma3, name = "Clusters15-16-17_Markers-MA", width = 5, height = 5, ArchRProj = archR, addDOC = FALSE)
+```
+
+```{r}
+p <- plotBrowserTrack(
+    ArchRProj = archR, 
+    groupBy = "NoControls_Reclustering", 
+    geneSymbol = c("MYD88"),
+    features =  getMarkers(markersPeaks, cutOff = "FDR <= 0.1 & Log2FC >= 1", returnGR = TRUE),
+    upstream = 50000,
+    downstream = 50000
+)
+
+grid::grid.newpage()
+grid::grid.draw(p$MYD88)
+
+plotPDF(p, name = "Plot-Tracks-MYD88", width = 5, height = 5, ArchRProj = archR, addDOC = FALSE)
+```
+# Pairwise test
+```{r}
+markerTest <- getMarkerFeatures(
+  ArchRProj = archR, 
+  useMatrix = "PeakMatrix",
+  groupBy = "Clusters2",
+  testMethod = "wilcoxon",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  useGroups = "Erythroid",
+  bgdGroups = "Progenitor"
+)
+
+
+pv <- plotMarkers(seMarker = markerTest, name = c("C18"), cutOff = "FDR <= 0.1 & abs(Log2FC) >= 1", plotAs = "Volcano")
+pv
+
+plotPDF(pv, name = "Cluster18_vs_AllOthers_Marker-Volcano", width = 5, height = 5, ArchRProj = archR, addDOC = FALSE)
+```
+###########################################################
+### CHAPTER 12 - MOTIF ENRICHMENT IN DIFFERENTIAL PEAKS ###
+###########################################################
+```{r}
+archR <- addMotifAnnotations(ArchRProj = archR, motifSet = "cisbp", name = "Motif")
+```
+Plot upregulated in UP
+```{r}
+motifsUp <- peakAnnoEnrichment(
+    seMarker = markerTest,
+    ArchRProj = archR,
+    peakAnnotation = "Motif",
+    cutOff = "FDR <= 0.1 & Log2FC >= 0.5"
+  )
+
+df.up <- data.frame(TF = rownames(motifsUp), mlog10Padj = assay(motifsUp)[,1])
+df.up <- df.up[order(df.up$mlog10Padj, decreasing = TRUE),]
+df.up$rank <- seq_len(nrow(df.up))
+head(df.up)
+
+ggUp <- ggplot(df.up, aes(rank, mlog10Padj, color = mlog10Padj)) + 
+  geom_point(size = 1) +
+  ggrepel::geom_label_repel(
+        data = df[rev(seq_len(30)), ], aes(x = rank, y = mlog10Padj, label = TF), 
+        size = 1.5,
+        nudge_x = 2,
+        color = "black"
+  ) + theme_ArchR() + 
+  ylab("-log10(P-adj) Motif Enrichment") + 
+  xlab("Rank Sorted TFs Enriched") +
+  scale_color_gradientn(colors = paletteContinuous(set = "comet"))
+
+ggUp
+
+# Upregulated in 2nd comparison group
+motifsDo <- peakAnnoEnrichment(
+    seMarker = markerTest,
+    ArchRProj = archR,
+    peakAnnotation = "Motif",
+    cutOff = "FDR <= 0.1 & Log2FC <= -0.5"
+  )
+
+df.do <- data.frame(TF = rownames(motifsDo), mlog10Padj = assay(motifsDo)[,1])
+df.do <- df.do[order(df.do$mlog10Padj, decreasing = TRUE),]
+df.do$rank <- seq_len(nrow(df.do))
+head(df.do)
+
+ggDo <- ggplot(df.do, aes(rank, mlog10Padj, color = mlog10Padj)) + 
+  geom_point(size = 1) +
+  ggrepel::geom_label_repel(
+        data = df[rev(seq_len(30)), ], aes(x = rank, y = mlog10Padj, label = TF), 
+        size = 1.5,
+        nudge_x = 2,
+        color = "black"
+  ) + theme_ArchR() + 
+  ylab("-log10(FDR) Motif Enrichment") +
+  xlab("Rank Sorted TFs Enriched") +
+  scale_color_gradientn(colors = paletteContinuous(set = "comet"))
+
+ggDo
+```
+Save out figs
+```{r}
+plotPDF(ggUp, ggDo, name = "Cluster18_vs_AllOthers-Markers-Motifs-Enriched", width = 5, height = 5, ArchRProj = archR, addDOC = FALSE)
+```
+### MOTIF ENRICHMENT IN MARKER PEAKS ###
+```{r}
+enrichMotifs <- peakAnnoEnrichment(
+    seMarker = markersPeaks,
+    ArchRProj = archR,
+    peakAnnotation = "Motif",
+    cutOff = "FDR <= 0.1 & Log2FC >= 0.5"
+  )
+```
+
+```{r}
+heatmapEM <- plotEnrichHeatmap(enrichMotifs, n = 7, transpose = TRUE)
+ComplexHeatmap::draw(heatmapEM, heatmap_legend_side = "bot", annotation_legend_side = "bot")
+plotPDF(heatmapEM, name = "Cluster-Level-Motifs-Enriched-Marker-Heatmap", width = 8, height = 6, ArchRProj = archR, addDOC = FALSE)
+```
+ENCODE TF binding sites
+allows us to compare to database of known TFs
+```{r}
+archR <- addArchRAnnotations(ArchRProj = archR, collection = "EncodeTFBS")
+
+enrichEncode <- peakAnnoEnrichment(
+    seMarker = markersPeaks,
+    ArchRProj = archR,
+    peakAnnotation = "EncodeTFBS",
+    cutOff = "FDR <= 0.1 & Log2FC >= 0.5"
+  )
+
+heatmapEncode <- plotEnrichHeatmap(enrichEncode, n = 7, transpose = TRUE)
+ComplexHeatmap::draw(heatmapEncode, heatmap_legend_side = "bot", annotation_legend_side = "bot")
+plotPDF(heatmapEncode, name = "EncodeTFBS-Enriched-Marker-Heatmap", width = 8, height = 6, ArchRProj = archR, addDOC = FALSE)
+```
+```{r}
+archR <- addArchRAnnotations(ArchRProj = archR, collection = "ATAC")
+
+enrichATAC <- peakAnnoEnrichment(
+    seMarker = markersPeaks,
+    ArchRProj = archR,
+    peakAnnotation = "ATAC",
+    cutOff = "FDR <= 0.1 & Log2FC >= 0.5"
+  )
+
+heatmapATAC <- plotEnrichHeatmap(enrichATAC, n = 7, transpose = TRUE)
+ComplexHeatmap::draw(heatmapATAC, heatmap_legend_side = "bot", annotation_legend_side = "bot")
+plotPDF(heatmapATAC, name = "ATAC-Enriched-Marker-Heatmap", width = 8, height = 6, ArchRProj = archR, addDOC = FALSE)
+```
+### CODEX NOW ###
+```{r}
+archR <- addArchRAnnotations(ArchRProj = archR, collection = "Codex")
+
+enrichCodex <- peakAnnoEnrichment(
+    seMarker = markersPeaks,
+    ArchRProj = archR,
+    peakAnnotation = "Codex",
+    cutOff = "FDR <= 0.1 & Log2FC >= 0.5"
+  )
+
+heatmapCodex <- plotEnrichHeatmap(enrichCodex, n = 7, transpose = TRUE)
+ComplexHeatmap::draw(heatmapCodex, heatmap_legend_side = "bot", annotation_legend_side = "bot")
+plotPDF(heatmapCodex, name = "Codex-Enriched-Marker-Heatmap", width = 8, height = 6, ArchRProj = archR, addDOC = FALSE)
+
+```
+
+### CHROMVAR MOTIF DEVIATIONS ANALYSIS ###
+These enrichments, however, are not calculated on a per-cell basis and they do not take into account the insertion sequence bias of the Tn5 transposase. chromVAR, an R packaged from the Greenlead Lab, was created to account for these issues. chromVAR is designed for predicting enrichment of TF activity on a per-cell basis from sparse chromatin accessibility data. The two primary outputs of chromVAR are:
+
+“deviations” - A deviation is a bias-corrected measurement of how far the per-cell accessibility of a given feature (i.e motif) deviates from the expected accessibility based on the average of all cells or samples.
+“z-score” - The z-score, also known as a “deviation score” is the z-score for each bias-corrected deviation across all cells. The absolute value of the deviation score is correlated with the per-cell read depth. This is because, with more reads, you have higher confidence that the difference in per-cell accessibility of the given feature (i.e. motif) from the expectation is greater than would occur by chance.
+
+```{r}
+if("Motif" %ni% names(archR@peakAnnotation)){
+    projHeme5 <- addMotifAnnotations(ArchRProj = archR, motifSet = "cisbp", name = "Motif")
+}
+archR <- addBgdPeaks(archR)
+```
+Now this
+```{r}
+archR <- addDeviationsMatrix(
+  ArchRProj = archR, 
+  peakAnnotation = "Motif",
+  force = TRUE
+)
+
+plotVarDev <- getVarDeviations(archR, name = "MotifMatrix", plot = TRUE)
+
+plotPDF(plotVarDev, name = "Variable-Motif-Deviation-Scores", width = 5, height = 5, ArchRProj = archR, addDOC = FALSE)
+```
+```{r}
+motifs <- c("GATA1", "CEBPA", "EBF1", "IRF4", "TBX21", "PAX5")
+#motifs <- c("PAX5", "MS4A1", "MUM1", "CD27", "BCL6", "SDC1", "CD38", "CD24", "CD19")
+
+markerMotifs <- getFeatures(archR, select = paste(motifs, collapse="|"), useMatrix = "MotifMatrix")
+markerMotifs
+
+markerMotifs <- grep("z:", markerMotifs, value = TRUE)
+markerMotifs <- markerMotifs[markerMotifs %ni% "z:SREBF1_22"]
+markerMotifs
+
+p <- plotGroups(ArchRProj = archR, 
+  groupBy = "predictedGroup_Un", 
+  colorBy = "MotifMatrix", 
+  name = markerMotifs,
+  imputeWeights = getImputeWeights(archR)
+)
+
+p2 <- lapply(seq_along(p), function(x){
+  if(x != 1){
+    p[[x]] + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 6) +
+    theme(plot.margin = unit(c(0.1, 0.1, 0.1, 0.1), "cm")) +
+    theme(
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        axis.title.y=element_blank()
+    ) + ylab("")
+  }else{
+    p[[x]] + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 6) +
+    theme(plot.margin = unit(c(0.1, 0.1, 0.1, 0.1), "cm")) +
+    theme(
+        axis.ticks.y=element_blank(),
+        axis.title.y=element_blank()
+    ) + ylab("")
+  }
+})
+do.call(cowplot::plot_grid, c(list(nrow = 1, rel_widths = c(2, rep(1, length(p2) - 1))),p2))
+
+plotPDF(p, name = "Plot-Groups-Deviations-w-Imputation", width = 5, height = 5, ArchRProj = archR, addDOC = FALSE)
+```
+```{r}
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "MotifMatrix", 
+    name = sort(markerMotifs), 
+    embedding = "UMAPHarmony_Samples",
+    imputeWeights = getImputeWeights(archR)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0, 0, 0, 0), "cm")) +
+    theme(
+        axis.text.x=element_blank(), 
+        axis.ticks.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 3),p2))
+
+plotPDF(p, name = "Plot-Groups-MotifDeviation_Zscore_UMAPs", width = 5, height = 5, ArchRProj = archR, addDOC = FALSE)
+
+```
+```{r}
+markerRNA <- getFeatures(archR, select = paste(motifs, collapse="|"), useMatrix = "GeneScoreMatrix")
+markerRNA <- markerRNA[markerRNA %ni% c("SREBF1","CEBPA-DT")]
+markerRNA
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "GeneScoreMatrix", 
+    name = sort(markerRNA), 
+    embedding = "UMAPHarmony_Samples",
+    imputeWeights = getImputeWeights(archR)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0, 0, 0, 0), "cm")) +
+    theme(
+        axis.text.x=element_blank(), 
+        axis.ticks.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 3),p2))
+
+plotPDF(p, name = "Plot-Groups-Motif_GeneScores_UMAPs", width = 5, height = 5, ArchRProj = archR, addDOC = FALSE)
+```
+```{r}
+markerRNA <- getFeatures(archR, select = paste(motifs, collapse="|"), useMatrix = "GeneIntegrationMatrix")
+markerRNA <- markerRNA[markerRNA %ni% c("SREBF1","CEBPA-DT")]
+markerRNA
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = sort(markerRNA), 
+    embedding = "UMAPHarmony_Samples",
+    continuousSet = "blueYellow",
+    imputeWeights = getImputeWeights(archR)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0, 0, 0, 0), "cm")) +
+    theme(
+        axis.text.x=element_blank(), 
+        axis.ticks.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 3),p2))
+
+plotPDF(p, name = "Plot-Groups-Motif_GeneExpression_UMAPs", width = 5, height = 5, ArchRProj = archR, addDOC = FALSE)
+```
+
+### SKIPPED CUSTOM DEVIATIONS WITH ENCODE CHAPTER 13 ###
+### AS WELL AS FOOTPRINTING CHAPTER 14 ### 
+### COME BACK AND DO IT LATER ###
+

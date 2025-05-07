@@ -1,0 +1,36 @@
+---
+title: "Untitled"
+output: html_document
+date: "2024-08-06"
+---
+
+```{r}
+gsea.result.1 <- read.table("/Users/gagled01/morganLab/bulkRNA_Nathan/gsea_report_for_L363_R1_vs_WT.tsv", sep = "\t", header = T)
+pc.like_vs_mbc.like_gsea <- read.table("/Users/gagled01/Downloads/PC-like_vs_MBC-like_GSEA.tsv", sep = "\t", header = T)
+```
+
+```{r}
+plotting.df <- data.frame(mbc.like_vs_pc.like_gsea$NAME, mbc.like_vs_pc.like_gsea$NES, mbc.like_vs_pc.like_gsea$FDR.q.val)
+plotting.df <- head(plotting.df, n = 20)
+colnames(plotting.df) <- c("Pathway", "NES", "FDR.q.val")
+plotting.df$Pathway <- gsub("HALLMARK_", "", plotting.df$Pathway)
+plotting.df$log10FDR.qval <- -log10(plotting.df$FDR.q.val)
+
+plotting.df2 <- data.frame(pc.like_vs_mbc.like_gsea$NAME, pc.like_vs_mbc.like_gsea$NES, pc.like_vs_mbc.like_gsea$FDR.q.val)
+plotting.df2 <- head(plotting.df2, n = 20)
+colnames(plotting.df2) <- c("Pathway", "NES", "FDR.q.val")
+#plotting.df2$FDR.q.val[1:2] <- 0.0001 # Manually giving some v low Q values because 0 does not work for plotting
+plotting.df2$Pathway <- gsub("HALLMARK_", "", plotting.df2$Pathway)
+plotting.df2$log10FDR.qval <- -log10(plotting.df2$FDR.q.val)
+
+```
+
+```{r}
+ggplot(plotting.df, aes(x=NES, y=reorder(Pathway,log10FDR.qval), fill=log10FDR.qval)) + geom_bar(stat="identity")+scale_fill_gradient(low="red", high="blue", name = "-log10(FDR q-value)") +
+  ylab("") + theme_minimal() + theme(legend.position = "bottom") + guides(color=guide_legend("-log10(FDR q-value)"))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/MBC-like_vs_PC-like_MBC_GSEA_Barplot.png", height = 8, width = 8)
+
+ggplot(plotting.df2, aes(x=NES, y=reorder(Pathway,log10FDR.qval), fill=log10FDR.qval)) + geom_bar(stat="identity")+scale_fill_gradient(low="red", high="blue", name = "-log10(FDR q-value)") +
+  ylab("") + theme_minimal() + theme(legend.position = "bottom") + guides(color=guide_legend("-log10(FDR q-value)"))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/PC-like_vs_MBC-like_MBC_GSEA_Barplot.png", height = 8, width = 8)
+```

@@ -1,0 +1,579 @@
+---
+title: "DeviationsAnalysis"
+output: html_document
+date: "2024-02-06"
+---
+
+```{r}
+library(ArchR)
+library(Seurat)
+addArchRThreads(threads = 1)
+addArchRGenome("hg38")
+options(future.globals.maxSize=100000000000000000000000) 
+```
+Load existing ArchR project
+```{r}
+archR <- loadArchRProject(path = "/Users/gagled01/morganLab/Waldenstroms/singlecell/data/ATAC_fragments/WM_DeviationsAdded")
+```
+# Try clustering on peaks
+```{r}
+# Illegally subsetting to get list of cells we want to keep for PROPER subsetting below
+# PCs and MBC from out dataset
+# Fix WM43 has PC metadata
+archR$hasPC2 <- archR$hasPC
+archR$hasPC2[archR$samplesClean == "WM43"] <- "NA"
+table(archR$hasPC2)
+
+archR$annotation2 <- archR$annotation1
+archR$annotation2[archR$annotation1 == "C3 - Non-clonal PC"] <- "C1 - Clonal PCs"
+
+# subset illegally to get only clonal cells
+cellsKeep <- archR$cellNames[archR$annotation1 %in% c("C1 - Clonal PCs", "C2 - Clonal MBC") & archR$condition == "WM"]
+illegal.archR.clonalOnly <- archR[cellsKeep, ]
+
+# RECLUSTER ON PEAKS
+illegal.archR.clonalOnly <- addIterativeLSI(
+  ArchRProj = illegal.archR.clonalOnly,
+  useMatrix = "PeakMatrix",
+  name = "IterativeLSI_MaligantOnly_PeakClusters",
+  iterations = 2,
+  clusterParams = list( # based on Seurat's FindClusters()
+    resolution = c(0.25),
+    sampleCells = 2000,
+    n.start = 10
+  ),
+  varFeatures = 20000,
+  dimsToUse = 1:20,
+  force = T
+)
+
+
+illegal.archR.clonalOnly <- addUMAP(
+    ArchRProj = illegal.archR.clonalOnly, 
+    reducedDims = "IterativeLSI_MaligantOnly_PeakClusters", 
+    name = "Malignant_PeakCluster_UMAP", 
+    nNeighbors = 30, 
+    minDist = 0.5, 
+    metric = "cosine",
+    force = T
+)
+
+# RECLUSTER ON PEAKS
+illegal.archR.clonalOnly <- addIterativeLSI(
+  ArchRProj = illegal.archR.clonalOnly,
+  useMatrix = "TileMatrix",
+  name = "IterativeLSI_MaligantOnly_TileCluster",
+  iterations = 2,
+  clusterParams = list( # based on Seurat's FindClusters()
+    resolution = c(0.25),
+    sampleCells = 2000,
+    n.start = 10
+  ),
+  varFeatures = 20000,
+  dimsToUse = 1:20,
+  force = T
+)
+
+
+illegal.archR.clonalOnly <- addUMAP(
+    ArchRProj = illegal.archR.clonalOnly, 
+    reducedDims = "IterativeLSI_MaligantOnly_TileCluster", 
+    name = "Malignant_TileCluster_UMAP", 
+    nNeighbors = 30, 
+    minDist = 0.5, 
+    metric = "cosine",
+    force = T
+)
+
+illegal.archR.clonalOnly$hasPC2 <- illegal.archR.clonalOnly$hasPC
+illegal.archR.clonalOnly$hasPC2[illegal.archR.clonalOnly$samplesClean == "WM43"] <- "NA"
+table(illegal.archR.clonalOnly$hasPC2)
+
+p1 <- plotEmbedding(ArchRProj = illegal.archR.clonalOnly, colorBy = "cellColData", name = "samplesClean", embedding = "Malignant_PeakCluster_UMAP")
+p2 <- plotEmbedding(ArchRProj = illegal.archR.clonalOnly, colorBy = "cellColData", name = "hasPC", embedding = "Malignant_PeakCluster_UMAP")
+p3 <- plotEmbedding(ArchRProj = illegal.archR.clonalOnly, colorBy = "cellColData", name = "hasPC2", embedding = "Malignant_PeakCluster_UMAP")
+p4 <- plotEmbedding(ArchRProj = illegal.archR.clonalOnly, colorBy = "cellColData", name = "cxcr4", embedding = "Malignant_PeakCluster_UMAP")
+p5 <- plotEmbedding(ArchRProj = illegal.archR.clonalOnly, colorBy = "cellColData", name = "annotation1", embedding = "Malignant_PeakCluster_UMAP")
+p6 <- plotEmbedding(ArchRProj = illegal.archR.clonalOnly, colorBy = "cellColData", name = "hasTopCDR3", embedding = "Malignant_PeakCluster_UMAP")
+
+p1
+p2
+p3
+p4
+p5
+p6
+
+plotPDF(p1,p2,p3,p4,p5,p6, name = "ClonalCellsOnly_Reclustered_MainUMAPs", width = 5, height = 5, ArchRProj = illegal.archR.clonalOnly, addDOC = FALSE)
+
+```
+### SUBSET OUT WM43 ###
+```{r}
+cellsKeep <- archR$cellNames[archR$annotation1 %in% c("C1 - Clonal PCs", "C2 - Clonal MBC") & archR$condition == "WM" & archR$samplesClean != "WM43"]
+
+malignantOnly.noWM43 <- subsetArchRProject(archR,
+                                           cells = cellsKeep,
+                                           outputDirectory = "MalignantOnly_NoWM43",
+                                           dropCells = TRUE,
+                                           force = T)
+
+# RECLUSTER ON PEAKS
+malignantOnly.noWM43 <- addIterativeLSI(
+  ArchRProj = malignantOnly.noWM43,
+  useMatrix = "PeakMatrix",
+  name = "IterativeLSI_MaligantOnly_PeakClusters_NoWM43",
+  iterations = 2,
+  clusterParams = list( # based on Seurat's FindClusters()
+    resolution = c(0.25),
+    sampleCells = 2000,
+    n.start = 10
+  ),
+  varFeatures = 20000,
+  dimsToUse = 1:20,
+  force = T
+)
+
+
+malignantOnly.noWM43 <- addUMAP(
+    ArchRProj = malignantOnly.noWM43, 
+    reducedDims = "IterativeLSI_MaligantOnly_PeakClusters_NoWM43", 
+    name = "Malignant_PeakCluster_UMAP_NoWM43", 
+    nNeighbors = 30, 
+    minDist = 0.5, 
+    metric = "cosine",
+    force = T
+)
+
+p1 <- plotEmbedding(ArchRProj = malignantOnly.noWM43, colorBy = "cellColData", name = "samplesClean", embedding = "Malignant_PeakCluster_UMAP_NoWM43")
+p2 <- plotEmbedding(ArchRProj = malignantOnly.noWM43, colorBy = "cellColData", name = "hasPC", embedding = "Malignant_PeakCluster_UMAP_NoWM43")
+#p3 <- plotEmbedding(ArchRProj = malignantOnly.noWM43, colorBy = "cellColData", name = "hasPC2", embedding = "Malignant_PeakCluster_UMAP_NoWM43")
+p4 <- plotEmbedding(ArchRProj = malignantOnly.noWM43, colorBy = "cellColData", name = "cxcr4", embedding = "Malignant_PeakCluster_UMAP_NoWM43")
+p5 <- plotEmbedding(ArchRProj = malignantOnly.noWM43, colorBy = "cellColData", name = "annotation1", embedding = "Malignant_PeakCluster_UMAP_NoWM43")
+p6 <- plotEmbedding(ArchRProj = malignantOnly.noWM43, colorBy = "cellColData", name = "hasTopCDR3", embedding = "Malignant_PeakCluster_UMAP_NoWM43")
+
+p1
+p2
+p3
+p4
+p5
+p6
+
+plotPDF(p1,p2,p4,p5,p6, name = "ClonalCellsOnly_Reclustered_MainUMAPs_NoWM43", width = 5, height = 5, ArchRProj = malignantOnly.noWM43, addDOC = FALSE)
+```
+### GENE EXPRESSION BETWEEN MBC-like and PC-like WITHOUT WM43 ####
+```{r}
+#cellsKeep <- illegal.archR.clonalOnly$cellNames[illegal.archR.clonalOnly$samplesClean != "WM43"]
+#illegal.archR.clonalOnly.no43 <- illegal.archR.clonalOnly[cellsKeep,]
+
+### Up in PC
+markerTest <- getMarkerFeatures(
+  ArchRProj = malignantOnly.noWM43, 
+  useMatrix = "PeakMatrix",
+  groupBy = "hasPC",
+  testMethod = "wilcoxon",
+  bias = c("TSSEnrichment", "log10(nFrags)")
+)
+
+markersGEX_list <- getMarkers(markerTest, cutOff = "FDR < 0.1 & Log2FC > 0.5")
+
+# Up
+up.df.gex <- markersGEX_list$`+`
+up.df.gex <- as.data.frame(up.df.gex)
+head(up.df.gex[order(-up.df.gex$MeanDiff),], n = 100) # up
+
+# Down
+down.df.gex <- markersGEX_list$`-`
+down.df.gex <- as.data.frame(down.df.gex)
+head(down.df.gex[order(-down.df.gex$MeanDiff),], n = 100) # down
+```
+
+```{r}
+# Plot some genes
+geneList1 <- c("BACH2", "AFF3", "RIPOR2", "TMSB4X", "CD52", "SYK", "MSI2", "CARMIL1", "PELI1", "CD74", "PLCG2", "CDK14", "JCHAIN", "HLA-DRA", "BCL2", "BCL6", "PAX5", "PRDM1", "XBP1", "JCHAIN", "SDC1", "MZB1")
+
+geneList1 <- c("IRF4", "PRDM1", "XBP1", "SPI1")
+motifs <- c("IRF4", "PRDM1", "XBP1", "SPI1")
+markerMotifs <- getFeatures(archR, select = paste(motifs, collapse="|"), useMatrix = "MotifMatrix")
+markerMotifs <- markerMotifs[markerMotifs %ni% "z:PRDM16_211"]
+markerMotifs <- grep("z:", markerMotifs, value = TRUE)
+markerMotifs2 <- c(markerMotifs[1], markerMotifs[3], markerMotifs[4], markerMotifs[2])
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "MotifMatrix", 
+    name = markerMotifs2, 
+    embedding = "BLineage_NoProgen_Recluster_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$horizonExtra,
+    imputeWeights = NULL
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.25, 0.25, 0.25, 0.25), "cm")) +
+    theme(
+        axis.text.x=element_blank(), 
+        axis.ticks.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 4),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/PC-differentiation_genes_Motifs.png", height = 3, width = 12)
+
+plotEmbedding(archR, colorBy = "GeneIntegrationMatrix", name = geneList1, embedding = "BLineage_NoProgen_Recluster_UMAP", imputeWeights = getImputeWeights(archR))
+```
+# Make Dot Plot
+# NO WM43 MOTIF ENRICHMENT TESTING
+```{r}
+motifs <- c("CREB", "FOXO")
+markerMotifs <- getFeatures(malignantOnly.noWM43, select = paste(motifs, collapse="|"), useMatrix = "MotifMatrix")
+markerMotifs <- markerMotifs[markerMotifs %ni% "z:PRDM16_211"]
+markerMotifs <- grep("z:", markerMotifs, value = TRUE)
+markerMotifs
+
+p <- plotEmbedding(
+    ArchRProj = malignantOnly.noWM43, 
+    colorBy = "MotifMatrix", 
+    name = sort(markerMotifs), 
+    embedding = "Malignant_PeakCluster_UMAP_NoWM43",
+    imputeWeights = getImputeWeights(malignantOnly.noWM43)
+)
+
+p
+
+plotEmbedding(ArchRProj = malignantOnly.noWM43, colorBy = "cellColData", name = "cxcr4", embedding = "Malignant_PeakCluster_UMAP_NoWM43")
+plotEmbedding(ArchRProj = malignantOnly.noWM43, colorBy = "cellColData", name = "annotation3", embedding = "Malignant_PeakCluster_UMAP_NoWM43")
+plotEmbedding(ArchRProj = malignantOnly.noWM43, colorBy = "cellColData", name = "annotation1", embedding = "Malignant_PeakCluster_UMAP_NoWM43")
+plotEmbedding(ArchRProj = malignantOnly.noWM43, colorBy = "cellColData", name = "samplesClean", embedding = "Malignant_PeakCluster_UMAP_NoWM43")
+
+```
+
+```{r}
+cellsKeep <- archR$cellNames[archR$annotation1 %in% c("C1 - Clonal PCs", "C2 - Clonal MBC") & archR$condition == "WM" & archR$samplesClean != "WM43"]
+
+malignantOnly.noWM43 <- subsetArchRProject(archR,
+                                           cells = cellsKeep,
+                                           outputDirectory = "MalignantOnly_NoWM43",
+                                           dropCells = TRUE,
+                                           force = T)
+
+malignantOnly.noWM43 <- addBgdPeaks(malignantOnly.noWM43)
+
+malignantOnly.noWM43 <- addDeviationsMatrix(
+  ArchRProj = malignantOnly.noWM43, 
+  peakAnnotation = "Motif",
+  force = TRUE
+)
+```
+### GET MOTIFS FROM DIFFERENTIAL MOTIFS!
+```{r}
+markerTest <- getMarkerFeatures(
+  ArchRProj = malignantOnly.noWM43, 
+  useMatrix = "PeakMatrix",
+  groupBy = "annotation3",
+  testMethod = "wilcoxon",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  useGroups = "PC-like MBCs",
+  bgdGroups = "MBC-like MBCs"
+)
+
+motifsUp <- peakAnnoEnrichment(
+    seMarker = markerTest,
+    ArchRProj = malignantOnly.noWM43,
+    peakAnnotation = "Motif",
+    cutOff = "FDR <= 0.1 & Log2FC >= 0.5"
+  )
+
+df.up <- data.frame(TF = rownames(motifsUp), mlog10Padj = assay(motifsUp)[,1])
+df.up <- df.up[order(df.up$mlog10Padj, decreasing = TRUE),]
+df.up$rank <- seq_len(nrow(df.up))
+
+motifsDo <- peakAnnoEnrichment(
+    seMarker = markerTest,
+    ArchRProj = malignantOnly.noWM43,
+    peakAnnotation = "Motif",
+    cutOff = "FDR <= 0.1 & Log2FC <= -0.5"
+  )
+
+df.do <- data.frame(TF = rownames(motifsDo), mlog10Padj = assay(motifsDo)[,1])
+df.do <- df.do[order(df.do$mlog10Padj, decreasing = TRUE),]
+df.do$rank <- seq_len(nrow(df.do))
+
+head(df.up, n = 20)
+head(df.do, n = 20)
+
+top20.up <- head(df.up$TF, n = 50)
+toPlotMotifs.up <- getFeatures(malignantOnly.noWM43, select = paste(top20.up, collapse="|"), useMatrix = "MotifMatrix")
+toPlotMotifs.up <- grep("z:", toPlotMotifs.up, value = TRUE)
+toPlotMotifs.up
+
+top20.do <- head(df.do$TF, n = 50)
+toPlotMotifs.do <- getFeatures(malignantOnly.noWM43, select = paste(top20.do, collapse="|"), useMatrix = "MotifMatrix")
+toPlotMotifs.do <- grep("z:", toPlotMotifs.do, value = TRUE)
+toPlotMotifs.do
+
+p1 <- plotEmbedding(
+    ArchRProj = malignantOnly.noWM43,
+    colorBy = "MotifMatrix",
+    name = toPlotMotifs.up,
+    embedding = "Malignant_PeakCluster_UMAP_NoWM43",
+    imputeWeights = getImputeWeights(malignantOnly.noWM43)
+)
+plotPDF(p1, name = "TopMotif_PC-likeMBCs_noWM43", width = 5, height = 5, ArchRProj = malignantOnly.noWM43, addDOC = FALSE)
+
+p2 <- plotEmbedding(
+    ArchRProj = malignantOnly.noWM43,
+    colorBy = "MotifMatrix",
+    name = toPlotMotifs.do,
+    embedding = "Malignant_PeakCluster_UMAP_NoWM43",
+    imputeWeights = getImputeWeights(malignantOnly.noWM43)
+)
+
+plotPDF(p2, name = "TopMotif_MBC-likeMBCs_noWM43", width = 5, height = 5, ArchRProj = malignantOnly.noWM43, addDOC = FALSE)
+
+#
+
+ggUp <- ggplot(df.up, aes(rank, mlog10Padj, color = mlog10Padj)) + 
+  geom_point(size = 1) +
+  ggrepel::geom_label_repel(
+        data = df.up[rev(seq_len(30)), ], aes(x = rank, y = mlog10Padj, label = TF), 
+        size = 1.5,
+        nudge_x = 2,
+        color = "black",
+        max.overlaps = 15
+  ) + theme_ArchR() + 
+  ylab("-log10(P-adj) Motif Enrichment") + 
+  xlab("Rank Sorted TFs Enriched") +
+  scale_color_gradientn(colors = paletteContinuous(set = "comet"))
+
+
+
+ggDo <- ggplot(df.do, aes(rank, mlog10Padj, color = mlog10Padj)) + 
+  geom_point(size = 1) +
+  ggrepel::geom_label_repel(
+        data = df.do[rev(seq_len(30)), ], aes(x = rank, y = mlog10Padj, label = TF), 
+        size = 1.5,
+        nudge_x = 2,
+        color = "black",
+        max.overlaps = 15
+  ) + theme_ArchR() + 
+  ylab("-log10(FDR) Motif Enrichment") +
+  xlab("Rank Sorted TFs Enriched") +
+  scale_color_gradientn(colors = paletteContinuous(set = "comet"))
+
+ggUp
+ggDo
+
+plotPDF(ggUp, ggDo, name = "PC-like_MBC-like_MBCs_Motifs-Enriched", width = 5, height = 5, ArchRProj = malignantOnly.noWM43, addDOC = FALSE)
+
+```
+Reference comparisons
+```{r}
+cellsKeep <- archR$cellNames[archR$samplesClean != "WM43"]
+archR.nowm43 <- archR[cellsKeep,]
+
+archR$annotation3 <- archR$annotation2
+archR$annotation3[archR$hasPC == "+" & archR$annotation2 == "C2 - Clonal MBC"] <- "PC-like MBCs"
+archR$annotation3[archR$hasPC == "-" & archR$annotation2 == "C2 - Clonal MBC"] <- "MBC-like MBCs"
+cellsKeep <- archR$cellNames[archR$annotation3 %in% c("PC-like MBCs", "C10 - HD Memory B cells")]
+pc.mbc.ref <- archR[cellsKeep,]
+
+markerTest <- getMarkerFeatures(
+  ArchRProj = archR.nowm43, 
+  useMatrix = "GeneIntegrationMatrix",
+  groupBy = "annotation3",
+  testMethod = "wilcoxon",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  useGroups = "C1 - Clonal PCs",
+  bgdGroups = c("C11 - HD Plasma cells")
+)
+
+markersGEX_list <- getMarkers(markerTest, cutOff = "FDR < 0.1 & Log2FC > 0.5")
+
+# Up
+up.df.gex <- markersGEX_list$`C1 - Clonal PCs`
+up.df.gex <- as.data.frame(up.df.gex)
+head(up.df.gex[order(-up.df.gex$MeanDiff),], n = 100) # up
+butt <- head(up.df.gex[order(-up.df.gex$MeanDiff),], n = 40) 
+poop <- butt$name
+#poop <- head(up.df.gex[order(-up.df.gex$MeanDiff),], n = 100)
+
+exclude1 <- setdiff(fart, ass)
+exclude2 <- setdiff(ass, fart)
+exclude1
+exclude2
+
+geneList1 <- c("BANK1", "BCL2", "VOPP1", "FBXW7", "TRIO", "TCF4", "LYN", "SMCHd1", "HDAC9", "PRKCB", "PTPRG", "ITPR2")
+plotEmbedding(archR, colorBy = "GeneIntegrationMatrix", name = exclude2, embedding = "BLineage_NoProgen_Recluster_UMAP", imputeWeights = getImputeWeights(archR))
+```
+# Violin plots for key genes
+```{r}
+# subset illegally to get only clonal cells
+cellsKeep <- archR$cellNames[archR$annotation1 %in% c("C1 - Clonal PCs", "C2 - Clonal MBC", "C3 - Non-clonal PC", 
+                                                      "C8 - HD GC B cells", "C10 - HD Memory B cells", "C11 - HD Plasma cells")]
+illegal.archR.noWeirdOnes <- archR[cellsKeep, ]
+
+archR$annotation4 <- archR$annotation2
+archR$annotation4[archR$hasPC == "+"] <- "PC-like"
+archR$annotation4[archR$hasPC == "-"] <- "MBC-like"
+archR$annotation4[archR$hasPC == "+" & archR$samplesClean == "WM43"] <- "WM43"
+archR$annotation4[archR$annotation4 == "C2 - Clonal MBC"] <- "MBC-like"
+
+motifs <- c("SPI1", "SPIB", "BLC11A", "BCL11B", "ZBTB7A", "WT1", "SP1", "EGR1", "KLF6", "DNMT1", "ZFX", "PATZ1")
+markerMotifs <- getFeatures(archR, select = paste(motifs, collapse="|"), useMatrix = "MotifMatrix")
+markerMotifs <- markerMotifs[markerMotifs %ni% "z:PRDM16_211"]
+markerMotifs <- grep("z:", markerMotifs, value = TRUE)
+markerMotifs
+
+plotGroups(
+    ArchRProj = archR, 
+    groupBy = "annotation4", 
+    colorBy = "MotifMatrix", 
+    name = markerMotifs,
+    plotAs = "violin",
+    alpha = 0.4,
+    addBoxPlot = TRUE,
+    
+   )
+```
+
+PC-like MBCs vs MBC-like MBCs comparison
+```{r}
+
+archR$annotation3 <- archR$annotation2
+archR$annotation3[archR$hasPC == "+"] <- "PC-like"
+archR$annotation3[archR$hasPC == "-"] <- "MBC-like"
+archR$annotation3[archR$condition == "HD"] <- "Reference"
+
+markerTest <- getMarkerFeatures(
+  ArchRProj = archR, 
+  useMatrix = "PeakMatrix",
+  groupBy = "annotation3",
+  testMethod = "wilcoxon",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  useGroups = "PC-like",
+  bgdGroups = c("Reference")
+)
+
+motifsUp <- peakAnnoEnrichment(
+    seMarker = markerTest,
+    ArchRProj = archR,
+    peakAnnotation = "Motif",
+    cutOff = "FDR <= 0.1 & Log2FC >= 0.5"
+  )
+
+df.up <- data.frame(TF = rownames(motifsUp), mlog10Padj = assay(motifsUp)[,1])
+df.up <- df.up[order(df.up$mlog10Padj, decreasing = TRUE),]
+df.up$rank <- seq_len(nrow(df.up))
+
+motifsDo <- peakAnnoEnrichment(
+    seMarker = markerTest,
+    ArchRProj = archR,
+    peakAnnotation = "Motif",
+    cutOff = "FDR <= 0.1 & Log2FC <= -0.5"
+  )
+
+df.do <- data.frame(TF = rownames(motifsDo), mlog10Padj = assay(motifsDo)[,1])
+df.do <- df.do[order(df.do$mlog10Padj, decreasing = TRUE),]
+df.do$rank <- seq_len(nrow(df.do))
+
+head(df.up, n = 25)
+head(df.do, n = 25)
+
+up.100 <- head(df.up$TF, n = 100)
+do.100 <- head(df.do$TF, n = 100)
+unique.up <- setdiff(up.100, do.100)
+unique.do <- setdiff(do.100, up.100)
+
+top20.up <- head(df.up$TF, n = 10)
+toPlotMotifs.up <- getFeatures(archR, select = paste(top20.up, collapse="|"), useMatrix = "MotifMatrix")
+toPlotMotifs.up <- grep("z:", toPlotMotifs.up, value = TRUE)
+toPlotMotifs.up
+
+top20.do <- head(df.do$TF, n = 10)
+toPlotMotifs.do <- getFeatures(archR, select = paste(top20.do, collapse="|"), useMatrix = "MotifMatrix")
+toPlotMotifs.do <- grep("z:", toPlotMotifs.do, value = TRUE)
+toPlotMotifs.do
+
+p1 <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "MotifMatrix", 
+    name = toPlotMotifs.up, 
+    embedding = "BLineage_NoProgen_Recluster_UMAP",
+    imputeWeights = getImputeWeights(archR)
+)
+
+plotPDF(p1, name = "TopMotif_WM_vs_HD", width = 5, height = 5, ArchRProj = archR, addDOC = FALSE)
+
+p2 <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "MotifMatrix", 
+    name = toPlotMotifs.do, 
+    embedding = "BLineage_NoProgen_Recluster_UMAP",
+    imputeWeights = getImputeWeights(archR)
+)
+
+plotPDF(p2, name = "TopMotif_HD_vs_WM", width = 5, height = 5, ArchRProj = archR, addDOC = FALSE)
+
+plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "annotation3", embedding = "BLineage_NoProgen_Recluster_UMAP")
+### GEX ###
+```
+```{r}
+plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "annotation1", embedding = "BLineage_NoProgen_Recluster_UMAP")
+
+```
+```{r}
+archR <- addCoAccessibility(
+    ArchRProj = archR,
+    reducedDims = "IterativeLSI_BLineage_Recluster_NoProgens"
+)
+
+cA <- getCoAccessibility(
+    ArchRProj = archR,
+    corCutOff = 0.5,
+    resolution = 1000,
+    returnLoops = TRUE
+)
+
+
+archR <- addPeak2GeneLinks(
+    ArchRProj = archR,
+    reducedDims = "IterativeLSI_BLineage_Recluster_NoProgens"
+)
+
+p2g <- getPeak2GeneLinks(
+    ArchRProj = archR,
+    corCutOff = 0.45,
+    resolution = 1,
+    returnLoops = FALSE
+)
+
+
+markerGenes <- c("PELI1", "E2F1", "CEBPA", "CDC5L", "EGR4")
+genes <- c("ZBTB7A")
+markerMotifs <- getFeatures(archR, select = paste(markerGenes, collapse="|"), useMatrix = "MotifMatrix")
+markerMotifs <- grep("z:", markerMotifs, value = TRUE)
+markerMotifs <- markerMotifs[markerMotifs %ni% c("z:E2F8_314", "z:E2F6_317", "z:E2F7_316")]
+#markerMotifs2 <- c(markerMotifs[1], markerMotifs[3], markerMotifs[4], markerMotifs[2])
+
+p <- plotBrowserTrack(
+    ArchRProj = archR, 
+    groupBy = "annotation2", 
+    geneSymbol = genes, 
+    upstream = 50000,
+    downstream = 50000,
+    loops = getPeak2GeneLinks(archR)
+)
+
+plotPDF(plotList = p, 
+    name = "Squeenotario.pdf", 
+    ArchRProj = archR, 
+    addDOC = FALSE, width = 5, height = 5)
+```
+
+
+
+
+

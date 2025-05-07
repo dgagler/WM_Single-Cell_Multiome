@@ -1,0 +1,150 @@
+---
+title: "Untitled"
+author: "Patrick Blaney"
+date: "2024-05-09"
+output: html_document
+---
+
+```{r}
+library(DESeq2)
+library(apeglm)
+library(rtracklayer)
+library(tidyverse)
+library(ComplexHeatmap)
+library(glue)
+library(ggrepel)
+library(EnhancedVolcano)
+library(ggpubr)
+library(paletteer)
+library(scran)
+library(scater)
+library(SingleCellExperiment)
+
+options(scipen = 999)
+set.seed(101010)
+
+# Set figure base theme
+theme_set(
+  theme_gray() +
+    theme(axis.line = element_line(size = 0.5,  color = "black"),
+          panel.background = element_rect(fill = NA, size = rel(14)),
+          panel.grid.minor = element_line(color = NA),
+          axis.text = element_text(size = 12,  color = "black"),
+          axis.title = element_text(size = 14),
+          axis.ticks = element_line(size = 0.75),
+          title = element_text(size = 16),
+          plot.title = element_text(hjust = 0.5)
+    )
+)
+```
+
+Stage files
+```{r}
+#setwd("~/morganLab/molecularLandscapeAndTimeOfOriginOfWaldenstrom/data/rnaSeq")
+
+counts_data <- "/Users/gagled01/morganLab/Waldenstroms/Bulk-RNA/wmPatient.quant.featurecounts.counts.unstr.txt"
+extra_data <- "/Users/gagled01/morganLab/Waldenstroms/Bulk-RNA/wmAdditionalPatients.quant.featurecounts.counts.unstr.txt"
+gencode_gene_list = "/Users/gagled01/morganLab/Waldenstroms/Bulk-RNA/gencode.v42.primary_assembly.basic.annotation.gtf.gz"
+
+raw_counts <- read.table(file = counts_data, header = F)
+raw_counts2 <- read.table(file = extra_data, header = F)
+```
+
+Set colnames
+```{r}
+colnames(raw_counts) <- read_delim(file = counts_data, 
+                                   delim = "\t",
+                                   col_names = T,
+                                   show_col_types = FALSE) %>%
+  colnames() %>% str_remove(pattern = "\\#")
+
+raw_counts <- tibble::column_to_rownames(raw_counts,
+                                       var = "GENE")
+
+colnames(raw_counts2) <- read_delim(file = extra_data, 
+                                    delim = "\t",
+                                    col_names = T,
+                                    show_col_types = FALSE) %>%
+  colnames() %>% str_remove(pattern = "\\#")
+
+raw_counts2 <- tibble::column_to_rownames(raw_counts2,
+                                         var = "GENE")
+
+#total_counts <- raw_counts
+total_counts <- cbind(raw_counts, raw_counts2)
+```
+
+Set input genes (i.e. remove confounders to clean signal)
+```{r}
+gencode_genes <- import(gencode_gene_list)
+gencode_genes <- unique(gencode_genes[gencode_genes$type == "CDS"]$gene_name)
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^MT-")]
+
+# TESTING - REMOVE Ig and HLAs
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^IG")]
+gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^HLA")]
+```
+
+Filter low counts
+```{r}
+total_counts <- total_counts %>%
+  dplyr::filter(rownames(total_counts) %in% gencode_genes)
+
+per_gene_exp_mean <- total_counts %>%
+  dplyr::mutate(exp_mean = round(rowSums(total_counts) / ncol(total_counts),
+                                 digits = 0)) %>%
+  dplyr::select(exp_mean) %>%
+  purrr::as_vector() %>%
+  as.numeric()
+
+total_counts <- total_counts %>%
+  dplyr::filter(rowSums(total_counts) / ncol(total_counts) > round(median(per_gene_exp_mean) / 10,
+                                                                     digits = 0))
+```
+
+
+```{r}
+# Conversion to single cell experiment data format + log normalization
+sce <- SingleCellExperiment(list(counts = total_counts), 
+                            colData = colnames(total_counts),
+                            rowData = rownames(total_counts))
+
+# Generate cell size factors
+sce <- computeSumFactors(sce)
+
+# Log normalize relative to pseudo-cell from calculated cell size factors
+sce_log <- logNormCounts(sce)
+
+# Identifying most variable genes
+dec <- modelGeneVar(sce_log)
+hvgs <- getTopHVGs(dec, n=100)
+hvgs <- c("EPHB1", "SGSM1", "ITGB1", "BANK1", "CD74", "FCHSD2", "FCRL1", "AKT3", "CD24", "AFF3", "SOX5", "PYHIN1",
+          "JCHAIN", "PRDM1", "PELI1", "MS4A1", "CD79A", "CD79B", "EIF2AK3", "MSI2", "FCRL5", "MSI2", "XBP1", "MZB1", "CD27")
+
+# Isolate normalized counts from SCE object
+norm_hm <- exprs(sce_log)
+
+#scran documentation uses difference between normalized value and row mean as
+# plot value; per creators, expression values are mean-centered for each gene
+# to highlight relative differences between expression in cells
+# https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5112579/pdf/f1000research-5-10712.pdf
+hm_plotvals <- (norm_hm - rowMeans(norm_hm)) %>% as.data.frame()
+
+# Ordered gene selection
+ind <- NULL
+
+for (i in 1:length(hvgs)){
+  ind[i] <- which(rownames(hm_plotvals) == hvgs[i])
+}
+
+#Taking normalized plot values for top HVGs
+hm_plotvals <- hm_plotvals[ind,]
+
+pdf(file = "/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/BulkRNA-Heatmap.png", height = 10, width = 10)
+testing <- Heatmap(as.matrix(hm_plotvals), name = "mat", show_column_names = FALSE, top_annotation = HeatmapAnnotation(foo = anno_block(gp = gpar(fill = c("slateblue1", "mediumpurple", "firebrick3")),
+        labels = c("PC-like", "Intermediate",  "MBC-like"), 
+        labels_gp = gpar(col = "white", fontsize = 10))),
+    column_km = 3)
+draw(testing)
+dev.off()
+

@@ -1,0 +1,3892 @@
+---
+title: "WM_Figures"
+output: html_document
+date: "2024-03-06"
+---
+```{r}
+library(ArchR)
+library(Seurat)
+library(SummarizedExperiment)
+library(ggpp)
+library(ggrepel)
+addArchRThreads(threads = 1)
+addArchRGenome("hg38")
+options(future.globals.maxSize=1000000000000000000000000000) 
+archR <- loadArchRProject(path = "/Users/gagled01/morganLab/Waldenstroms/Waldenstroms_Git/WM_DeviationsAdded_BatchCorrected")
+
+# Fix annotations
+archR$final_annotation[archR$final_annotation == "Non-clonal MBC"] <- "Polyclonal MBC"
+archR$final_annotation[archR$final_annotation == "Non-clonal PC"] <- "Polyclonal PC"
+archR$final_annotation[archR$final_annotation == "Intermediate MBC"] <- "WM43"
+table(archR$final_annotation)
+
+archR$hasTopCDR3[archR$final_annotation == "MBC-like MBC" & archR$samplesClean == "WM54"] <- "Yes"
+
+# Make new col for patient UMAP annotations
+archR$samplesRefCombined <- archR$samplesClean
+archR$samplesRefCombined[archR$condition == "HD"] <- "Reference"
+```
+# patient UMAPs Figure 1E
+```{r}
+gg_color_hue <- function(n) {
+  hues = seq(15, 375, length = n + 1)
+  hcl(h = hues, l = 65, c = 100)[1:n]
+}
+patient_colors <- gg_color_hue(length(table(archR$samplesRefCombined)))
+names(patient_colors) <- names(table(archR$samplesRefCombined))
+
+plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "samplesRefCombined", embedding = "UMAP_Harmony", pal = patient_colors, labelMeans = F, labelSize = 4) + ggtitle("") + NoLegend()
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure1/Figure1E_MainPatientUMAP.pdf", height = 6, width = 6)
+
+plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "samplesRefCombined", embedding = "UMAP_Harmony", pal = patient_colors, labelAsFactors = F, labelSize = 4) + ggtitle("") + NoLegend()
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure1/Figure1E_MainPatientUMAP_Labels.pdf", height = 6, width = 6)
+
+plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "samplesRefCombined", embedding = "UMAP_Harmony", pal = patient_colors, 
+              labelMeans = F,
+              baseSize = 10,
+              labelSize = 5.5,
+              fgColor = "black",
+              bgWidth = 0) + NoLegend() + theme(title = element_blank(),
+                                                axis.title.x = element_text(size = 15),
+                                                axis.title.y = element_text(size = 15))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure1/Figure1E_MainPatientUMAP.pdf", height = 6, width = 6)
+
+plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "BLin_NoProgen_Clusters", embedding = "UMAP_Harmony", labelSize = 4) + ggtitle("") + NoLegend()
+
+plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "samplesRefCombined", embedding = "UMAP_Harmony",  labelAsFactors = F, labelSize = 4) + ggtitle("") + NoLegend()
+plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "final_annotation", embedding = "UMAP_Harmony", labelAsFactors = F, labelSize = 4) + ggtitle("") + NoLegend()
+
+```
+TRUST4 UMAP
+```{r}
+# ARID1A
+cols <- c("gray", "violetred")
+names(cols) <- names(table(archR$hasTopCDR3)) # THIS IS HOW YOU USE PAL! NEED TO SET NUMBERS TO THE PROPER CLUSTER LABEL!!!! YEAAAAYUH!
+
+plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "hasTopCDR3", embedding = "UMAP_Harmony", pal = cols, labelMeans = F) + 
+  ggtitle("Top CDR3") + NoLegend()
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure1/Fig1E_WM_Supplementary_TRUST4_FullSet_UMAP.pdf", width = 6, height = 6) 
+
+```
+# Celltype barplot for Figure 1 -
+# Dirty way to get celltype relative abundance by patient dataframe for stacked barplots
+```{r}
+#new column for having new name for WM43
+archR$barplot_annotation <- archR$final_annotation
+archR$barplot_annotation[archR$barplot_annotation == "WM43"] <- "Lymphoplasmacyte"
+
+#new column for having new name for WM43
+archR$barplot_samples <- archR$samplesClean
+archR$barplot_samples[archR$samplesClean == "BCP003"] <- "Ref1"
+archR$barplot_samples[archR$samplesClean == "BCP004"] <- "Ref2"
+archR$barplot_samples[archR$samplesClean == "BCP005"] <- "Ref3"
+archR$barplot_samples[archR$samplesClean == "BCP006"] <- "Ref4"
+archR$barplot_samples[archR$samplesClean == "stanford_1"] <- "Ref5"
+archR$barplot_samples[archR$samplesClean == "stanford_2"] <- "Ref6"
+archR$barplot_samples[archR$samplesClean == "stanford_3"] <- "Ref7"
+
+
+############### NYU SAMPLES
+p01.076.ids <- BiocGenerics::which(archR$barplot_samples %in% "01-076")
+p01.076.celltypes <- archR$barplot_annotation[p01.076.ids]
+p01.115.ids <- BiocGenerics::which(archR$barplot_samples %in% "01-115")
+p01.115.celltypes <- archR$barplot_annotation[p01.115.ids]
+p01.131.ids <- BiocGenerics::which(archR$barplot_samples %in% "01-131")
+p01.131.celltypes <- archR$barplot_annotation[p01.131.ids]
+p01.163.ids <- BiocGenerics::which(archR$barplot_samples %in% "01-163")
+p01.163.celltypes <- archR$barplot_annotation[p01.163.ids]
+p01.190.ids <- BiocGenerics::which(archR$barplot_samples %in% "01-190")
+p01.190.celltypes <- archR$barplot_annotation[p01.190.ids]
+p04.003.ids <- BiocGenerics::which(archR$barplot_samples %in% "04-003")
+p04.003.celltypes <- archR$barplot_annotation[p04.003.ids]
+p04.006.ids <- BiocGenerics::which(archR$barplot_samples %in% "04-006")
+p04.006.celltypes <- archR$barplot_annotation[p04.006.ids]
+
+############### GUSTAVE ROUSSY SAMPLES
+
+wm25.ids <- BiocGenerics::which(archR$barplot_samples %in% "WM25")
+wm25.celltypes <- archR$barplot_annotation[wm25.ids]
+wm43.ids <- BiocGenerics::which(archR$barplot_samples %in% "WM43")
+wm43.celltypes <- archR$barplot_annotation[wm43.ids]
+wm46.ids <- BiocGenerics::which(archR$barplot_samples %in% "WM46")
+wm46.celltypes <- archR$barplot_annotation[wm46.ids]
+wm47.ids <- BiocGenerics::which(archR$barplot_samples %in% "WM47")
+wm47.celltypes <- archR$barplot_annotation[wm47.ids]
+wm54.ids <- BiocGenerics::which(archR$barplot_samples %in% "WM54")
+wm54.celltypes <- archR$barplot_annotation[wm54.ids]
+wm65.ids <- BiocGenerics::which(archR$barplot_samples %in% "WM65")
+wm65.celltypes <- archR$barplot_annotation[wm65.ids]
+###############
+
+bcp003.ids <- BiocGenerics::which(archR$barplot_samples %in% "Ref1")
+bcp003.celltypes <- archR$barplot_annotation[bcp003.ids]
+bcp004.ids <- BiocGenerics::which(archR$barplot_samples %in% "Ref2")
+bcp004.celltypes <- archR$barplot_annotation[bcp004.ids]
+bcp005.ids <- BiocGenerics::which(archR$barplot_samples %in% "Ref3")
+bcp005.celltypes <- archR$barplot_annotation[bcp005.ids]
+bcp006.ids <- BiocGenerics::which(archR$barplot_samples %in% "Ref4")
+bcp006.celltypes <- archR$barplot_annotation[bcp006.ids]
+
+###############
+stanford1.ids <- BiocGenerics::which(archR$barplot_samples %in% "Ref5")
+stanford1.celltypes <- archR$barplot_annotation[stanford1.ids]
+stanford2.ids <- BiocGenerics::which(archR$barplot_samples %in% "Ref6")
+stanford2.celltypes <- archR$barplot_annotation[stanford2.ids]
+stanford3.ids <- BiocGenerics::which(archR$barplot_samples %in% "Ref7")
+stanford3.celltypes <- archR$barplot_annotation[stanford3.ids]
+
+library(tidyverse)
+
+# Relative abundance by patient...requires a lot of fennegling bcuz different patients have different cell populations
+p01.076_relabun <- data.frame(table(p01.076.celltypes)/sum(table(p01.076.celltypes)) * 100)
+p01.076_relabun$Patient <- "01-076"
+colnames(p01.076_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$barplot_annotation, p01.076_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+missing.df$Patient <- "01-076"
+p01.076.mergedf <- rbind(p01.076_relabun, missing.df)
+
+p01.115_relabun <- data.frame(table(p01.115.celltypes)/sum(table(p01.115.celltypes)) * 100)
+p01.115_relabun$Patient <- "01-115"
+colnames(p01.115_relabun)[1] <- "Celltype"
+# missing.celltypes <- setdiff(archR$barplot_annotation, p01.115_relabun$Celltype)
+# missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+# colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+# missing.df$Celltype <- missing.celltypes
+# missing.df$Patient <- "01-115"
+# p01.115.mergedf <- rbind(p01.115_relabun, missing.df)
+p01.115.mergedf <- p01.115_relabun # because it has all celltypes!
+
+p01.131_relabun <- data.frame(table(p01.131.celltypes)/sum(table(p01.131.celltypes)) * 100)
+p01.131_relabun$Patient <- "01-131"
+colnames(p01.131_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$barplot_annotation, p01.131_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+missing.df$Patient <- "01-131"
+p01.131.mergedf <- rbind(p01.131_relabun, missing.df)
+
+p01.163_relabun <- data.frame(table(p01.163.celltypes)/sum(table(p01.163.celltypes)) * 100)
+p01.163_relabun$Patient <- "01-163"
+colnames(p01.163_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$barplot_annotation, p01.163_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+missing.df$Patient <- "01-163"
+p01.163.mergedf <- rbind(p01.163_relabun, missing.df)
+
+p01.190_relabun <- data.frame(table(p01.190.celltypes)/sum(table(p01.190.celltypes)) * 100)
+p01.190_relabun$Patient <- "01-190"
+colnames(p01.190_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$barplot_annotation, p01.190_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+missing.df$Patient <- "01-190"
+p01.190.mergedf <- rbind(p01.190_relabun, missing.df)
+
+p04.003_relabun <- data.frame(table(p04.003.celltypes)/sum(table(p04.003.celltypes)) * 100)
+p04.003_relabun$Patient <- "04-003"
+colnames(p04.003_relabun)[1] <- "Celltype"
+# missing.celltypes <- setdiff(archR$barplot_annotation, p04.003_relabun$Celltype)
+# missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+# colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+# missing.df$Celltype <- missing.celltypes
+# missing.df$Patient <- "04-003"
+# p04.003.mergedf <- rbind(p04.003_relabun, missing.df)
+p04.003.mergedf <- p04.003_relabun # because it has all celltypes!
+
+p04.006_relabun <- data.frame(table(p04.006.celltypes)/sum(table(p04.006.celltypes)) * 100)
+p04.006_relabun$Patient <- "04-006"
+colnames(p04.006_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$barplot_annotation, p04.006_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+missing.df$Patient <- "04-006"
+p04.006.mergedf <- rbind(p04.006_relabun, missing.df)
+
+###################################### GOUSTAV ROUSSY SAMPLES
+
+wm25_relabun <- data.frame(table(wm25.celltypes)/sum(table(wm25.celltypes)) * 100)
+wm25_relabun$Patient <- "WM25"
+colnames(wm25_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$barplot_annotation, wm25_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+missing.df$Patient <- "WM25"
+wm25.mergedf <- rbind(wm25_relabun, missing.df)
+
+wm43_relabun <- data.frame(table(wm43.celltypes)/sum(table(wm43.celltypes)) * 100)
+wm43_relabun$Patient <- "WM43"
+colnames(wm43_relabun)[1] <- "Celltype"
+# missing.celltypes <- setdiff(archR$barplot_annotation, wm43_relabun$Celltype)
+# missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+# colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+# missing.df$Celltype <- missing.celltypes
+# missing.df$Patient <- "Wm43"
+# wm43.mergedf <- rbind(wm43_relabun, missing.df)
+wm43.mergedf <- wm43_relabun # because it has all celltypes
+
+wm46_relabun <- data.frame(table(wm46.celltypes)/sum(table(wm46.celltypes)) * 100)
+wm46_relabun$Patient <- "WM46"
+colnames(wm46_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$barplot_annotation, wm46_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+missing.df$Patient <- "WM46"
+wm46.mergedf <- rbind(wm46_relabun, missing.df)
+
+wm47_relabun <- data.frame(table(wm47.celltypes)/sum(table(wm47.celltypes)) * 100)
+wm47_relabun$Patient <- "WM47"
+colnames(wm47_relabun)[1] <- "Celltype"
+# missing.celltypes <- setdiff(archR$barplot_annotation, wm47_relabun$Celltype)
+# missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+# colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+# missing.df$Celltype <- missing.celltypes
+# missing.df$Patient <- "WM47"
+# wm47.mergedf <- rbind(wm47_relabun, missing.df)
+wm47.mergedf <- wm47_relabun # because it has all celltypes
+
+wm54_relabun <- data.frame(table(wm54.celltypes)/sum(table(wm54.celltypes)) * 100)
+wm54_relabun$Patient <- "WM54"
+colnames(wm54_relabun)[1] <- "Celltype"
+# missing.celltypes <- setdiff(archR$barplot_annotation, wm54_relabun$Celltype)
+# missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+# colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+# missing.df$Celltype <- missing.celltypes
+# missing.df$Patient <- "WM54"
+# wm54.mergedf <- rbind(wm54_relabun, missing.df)
+wm54.mergedf <- wm54_relabun # because it has all celltypes
+
+wm65_relabun <- data.frame(table(wm65.celltypes)/sum(table(wm65.celltypes)) * 100)
+wm65_relabun$Patient <- "WM65"
+colnames(wm65_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$barplot_annotation, wm65_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+missing.df$Patient <- "WM65"
+wm65.mergedf <- rbind(wm65_relabun, missing.df)
+
+###################################### REFERENCE DATA
+
+bcp003_relabun <- data.frame(table(bcp003.celltypes)/sum(table(bcp003.celltypes)) * 100)
+bcp003_relabun$Patient <- "Ref1"
+colnames(bcp003_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$barplot_annotation, bcp003_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+#missing.df$Patient <- "BCP003"
+bcp003.mergedf <- rbind(bcp003_relabun, missing.df)
+bcp003.mergedf <- bcp003_relabun # bcuz there are no missing types
+
+bcp004_relabun <- data.frame(table(bcp004.celltypes)/sum(table(bcp004.celltypes)) * 100)
+bcp004_relabun$Patient <- "Ref2"
+colnames(bcp004_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$barplot_annotation, bcp004_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+#missing.df$Patient <- "BCP004"
+bcp004.mergedf <- rbind(bcp004_relabun, missing.df)
+bcp004.mergedf <- bcp004_relabun # bcuz there are no missing types
+
+bcp005_relabun <- data.frame(table(bcp005.celltypes)/sum(table(bcp005.celltypes)) * 100)
+bcp005_relabun$Patient <- "Ref3"
+colnames(bcp005_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$barplot_annotation, bcp005_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+#missing.df$Patient <- "BCP005"
+bcp005.mergedf <- rbind(bcp005_relabun, missing.df)
+bcp005.mergedf <- bcp005_relabun # bcuz there are no missing types
+
+bcp006_relabun <- data.frame(table(bcp006.celltypes)/sum(table(bcp006.celltypes)) * 100)
+bcp006_relabun$Patient <- "Ref4"
+colnames(bcp006_relabun)[1] <- "Celltype"
+missing.celltypes <- setdiff(archR$barplot_annotation, bcp006_relabun$Celltype)
+missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+missing.df$Celltype <- missing.celltypes
+#missing.df$Patient <- "BCP006"
+bcp006.mergedf <- rbind(bcp006_relabun, missing.df)
+bcp006.mergedf <- bcp006_relabun # bcuz there are no missing types
+
+#########################################
+
+stanford1_relabun <- data.frame(table(stanford1.celltypes)/sum(table(stanford1.celltypes)) * 100)
+stanford1_relabun$Patient <- "Ref5"
+colnames(stanford1_relabun)[1] <- "Celltype"
+# missing.celltypes <- setdiff(archR$barplot_annotation, stanford1_relabun$Celltype)
+# missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+# colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+# missing.df$Celltype <- missing.celltypes
+# missing.df$Patient <- "stanford1"
+# stanford1.mergedf <- rbind(stanford1_relabun, missing.df)
+stanford1.mergedf <- stanford1_relabun # because it has all celltypes
+
+stanford2_relabun <- data.frame(table(stanford2.celltypes)/sum(table(stanford2.celltypes)) * 100)
+stanford2_relabun$Patient <- "Ref6"
+colnames(stanford2_relabun)[1] <- "Celltype"
+# missing.celltypes <- setdiff(archR$barplot_annotation, stanford2_relabun$Celltype)
+# missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+# colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+# missing.df$Celltype <- missing.celltypes
+# missing.df$Patient <- "stanford2"
+# stanford2.mergedf <- rbind(stanford2_relabun, missing.df)
+stanford2.mergedf <- stanford2_relabun # because it has all celltypes
+
+stanford3_relabun <- data.frame(table(stanford3.celltypes)/sum(table(stanford3.celltypes)) * 100)
+stanford3_relabun$Patient <- "Ref7"
+colnames(stanford3_relabun)[1] <- "Celltype"
+#missing.celltypes <- setdiff(archR$barplot_annotation, stanford3_relabun$Celltype)
+#missing.df <- data.frame(matrix(NA, nrow = length(missing.celltypes), ncol = 3))
+#colnames(missing.df) <- c("Celltype", "Freq", "Patient")
+#missing.df$Celltype <- missing.celltypes # not missing any types
+#missing.df$Patient <- "stanford3"
+#stanford3.mergedf <- rbind(stanford3_relabun)
+stanford3.mergedf <- stanford3_relabun # because it has all celltypes
+
+allpatient_df <- rbind(p01.076.mergedf, p01.115.mergedf, p01.131.mergedf, p01.163.mergedf, p01.190.mergedf, p04.003.mergedf, p04.006.mergedf, 
+                       wm25.mergedf, wm43.mergedf, wm46.mergedf, wm47.mergedf, wm54.mergedf, wm65.mergedf,
+                       bcp003.mergedf, bcp004.mergedf, bcp005.mergedf, bcp006.mergedf, 
+                       stanford1.mergedf, stanford2.mergedf, stanford3.mergedf)
+
+pc.df <- allpatient_df[allpatient_df$Celltype == "Clonal PCs",]
+```
+# Stacked bar plot of cell type relative abundances - FIGURE 1B
+```{r}
+plot_order <- c("MBC-like MBC", "PC-like MBC", "Clonal PC", "Polyclonal MBC", "Polyclonal PC", "Lymphoplasmacyte", "Reference MBC", "Reference PC", "Reference Naive", "Reference GC")
+
+# factor
+allpatient_df$Celltype <- factor(allpatient_df$Celltype, levels = plot_order)
+
+# similar w patients
+#allpatient_df$Patient <- factor(allpatient_df$Patient, levels = c("01-076", "01-115", "01-131", "01-163", "01-190", "04-003", "04-006",
+#                                                                  "WM25", "WM43", "WM46", "WM47", "WM54", "WM65",
+#                                                                  "Ref1", "Ref2", "Ref3", "Ref4",
+#                                                                  "Ref5", "Ref6", "Ref7"
+#                                                                 ))
+
+allpatient_df$Patient <- factor(allpatient_df$Patient, levels = c("WM46", "WM47", "WM65", "01-190", "01-076", "WM54", "04-006", "01-115",
+                                                                  "01-131", "01-163", "04-003", "WM25", "WM43",
+                                                                  "Ref1", "Ref2", "Ref3", "Ref4", "Ref5", "Ref6", "Ref7"))
+
+allpatient_df$Patient <- droplevels(allpatient_df$Patient)
+
+colors_barplot <- c("MBC-like MBC" = "firebrick", 
+                    "PC-like MBC" = "slateblue",
+                    "Clonal PC" = "lightseagreen",
+                    "Polyclonal MBC" = "thistle2",
+                    "Polyclonal PC" = "orange1",
+                    "Lymphoplasmacyte" = "forestgreen",
+                    "Reference MBC" = "goldenrod",
+                    "Reference PC" = "darkcyan",
+                    "Reference Naive" = "black",
+                    "Reference GC" = "darkmagenta")
+
+colors <- c("firebrick", "slateblue", "lightseagreen", "thistle2", "orange1", "forestgreen", "goldenrod", "darkcyan", "black", "darkmagenta")
+# Stacked barplot
+ggplot(allpatient_df, aes(fill=Celltype, y=Freq, x=Patient)) + 
+    geom_bar(position="stack", stat="identity", width = 0.5) + scale_fill_manual(values=colors) +
+  xlab(label = "Patient") + ylab("Relative Abundance") + theme_minimal() + 
+  guides(fill = guide_legend(nrow = 1)) +
+  theme(axis.text.y = element_text(size = "10", vjust = 0.5, hjust = 0.5),
+        axis.text.x = element_text(size = "10", vjust = 0.5, hjust = 0.5, angle = 90),
+        axis.title.x = element_text(size = "15", face = "bold"),
+        axis.title.y = element_text(size = "15", face = "bold"),
+        legend.position = "top")
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure1/WM_Fig1B_CellTypeBarplot.pdf", width = 8, height = 4) 
+```
+Figure 1C main marker genes
+```{r}
+geneList <- c("PRDM1", "XBP1", "IRF4", "SDC1", 
+              "JCHAIN", "MZB1", "CD38", "CD9",
+              "SPI1", "CD19", "BCL6", "PAX5",
+              "CD74", "CD24", "IRF8", "BACH2")
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = geneList, 
+    embedding = "UMAP_Harmony",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = NULL
+)
+
+p2 <- lapply(p, function(x){ # insanely specific ggplot adjustments to fit the legend in here properly. jesus christ lol
+    x + 
+    #guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.25, 0.25, 0.25, 0.25), "cm")) + # top, right, bottom, left
+    theme(legend.title = element_text(size = 6),
+          legend.text = element_text(size = 6),
+          legend.key.size = unit(0.45, "cm"), 
+          #legend.title.position = "left",
+          legend.position = c(0.88, 0.775),#"right",
+          legend.direction = "vertical",
+          #legend.margin = margin(0,0,0,0),
+          legend.box.margin = margin(-10,-10,-10,-10)) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+
+do.call(cowplot::plot_grid, c(list(ncol = 4),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures//Figure1/Figure1C_Marker_Gene_UMAPs.pdf", height = 12, width = 16)
+```
+# New Fig 1C
+```{r}
+geneList <- c("PRDM1", "XBP1", "IRF4", 
+              "MZB1", "CD38", "SDC1", 
+              "BACH2", "BCL6", "PAX5",
+              "IRF8", "CD24", "CD19")
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = geneList, 
+    embedding = "UMAP_Harmony",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = NULL
+)
+
+p2 <- lapply(p, function(x){ # insanely specific ggplot adjustments to fit the legend in here properly. jesus christ lol
+    x + 
+    #guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.25, 0.25, 0.25, 0.25), "cm")) + # top, right, bottom, left
+    theme(legend.title = element_text(size = 6),
+          legend.text = element_text(size = 6),
+          legend.key.size = unit(0.45, "cm"), 
+          legend.title.position = "bottom",
+) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+
+do.call(cowplot::plot_grid, c(list(ncol = 3),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures//Figure1/Figure1C_Marker_Gene_UMAPs.pdf", height = 12, width = 12)
+```
+# Stacked violin plot Fig 1XX?
+```{r}
+library(cowplot)
+
+colors_barplot <- c("MBC-like MBC" = "firebrick", 
+                    "PC-like MBC" = "slateblue",
+                    "Clonal PC" = "lightseagreen",
+                    "Polyclonal MBC" = "thistle2",
+                    "Polyclonal PC" = "orange1",
+                    "WM43" = "forestgreen",
+                    "Reference MBC" = "goldenrod",
+                    "Reference PC" = "darkcyan",
+                    "Reference Naive" = "black",
+                    "Reference GC" = "darkmagenta")
+
+genes <- c("PRDM1", "XBP1", "IRF4", 
+              "MZB1", "CD38", "CD27", 
+              "CD74", "IRF8", "BACH2",
+              "MS4A1", "CD24", "PAX5")
+
+p <- plotGroups(
+    ArchRProj = archR, 
+    groupBy = "final_annotation", 
+    colorBy = "GeneIntegrationMatrix", 
+    name = genes,
+    plotAs = "violin",
+    imputeWeights = getImputeWeights(archR), 
+    alpha = 0.4,
+    addBoxPlot = T,
+    groupOrder = c("MBC-like MBC", "PC-like MBC", "Polyclonal MBC", "WM43", "Clonal PC", "Polyclonal PC", "Reference PC", "Reference MBC", "Reference Naive", "Reference GC"),
+    pal = colors_barplot,
+    quantCut = c(0.975, 0.025)
+   ) 
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0, 0.15, 0, 0.15), "cm")) +
+    theme(
+        panel.spacing = unit(0, "lines"),
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_text(size = "8"), 
+        #axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_text(size = "10", face = "bold")
+    )
+})
+plot_grid(plotlist = p2, ncol = 1, align = "v")
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure1/Fig1_MarkerViolins.pdf", height = 6, width = 3)
+
+```
+
+Correlating motifs and gene expression - Figure 2
+```{r}
+seGroupMotif <- getGroupSE(ArchRProj = subpoo.archR, useMatrix = "MotifMatrix", groupBy = "annotation2")
+
+seZ <- seGroupMotif[rowData(seGroupMotif)$seqnames=="z",]
+#seDev <- seGroupMotif[rowData(seGroupMotif)$seqnames=="deviations",]
+
+rowData(seZ)$maxDelta <- lapply(seq_len(ncol(seZ)), function(x){
+  rowMaxs(assay(seZ) - assay(seZ)[,x])
+}) %>% Reduce("cbind", .) %>% rowMaxs
+
+#rowData(seZ)$motifDev <- lapply(seq_len(ncol(seZ)), function(x){
+#  (assay(seZ)[,x])
+#}) %>% Reduce("cbind", .) %>% rowMeans
+
+corGIM_MM <- correlateMatrices(
+    ArchRProj = subpoo.archR,
+    useMatrix1 = "GeneIntegrationMatrix",
+    useMatrix2 = "MotifMatrix",
+    reducedDims = "IterativeLSI_BLineage_Recluster_NoProgens"
+)
+
+corGIM_MM$maxDelta <- rowData(seZ)[match(corGIM_MM$MotifMatrix_name, rowData(seZ)$name), "maxDelta"]
+#corGIM_MM$motifDev <- rowData(seZ)[match(corGIM_MM$MotifMatrix_name, rowData(seZ)$name), "motifDev"]
+
+# ORIGINAL
+corGIM_MM <- corGIM_MM[order(abs(corGIM_MM$cor), decreasing = TRUE), ]
+corGIM_MM <- corGIM_MM[which(!duplicated(gsub("\\-.*","",corGIM_MM[,"MotifMatrix_name"]))), ]
+corGIM_MM$TFRegulator <- "NONE"
+corGIM_MM$TFRegulator[which(corGIM_MM$cor > 0.4 & corGIM_MM$padj < 0.01 & corGIM_MM$maxDelta > quantile(corGIM_MM$maxDelta, 0.75))] <- "POS"
+pos.genes <- sort(corGIM_MM[corGIM_MM$TFRegulator=="POS",1])
+corGIM_MM$TFRegulator[which(corGIM_MM$cor < (-0.4) & corGIM_MM$padj < 0.01 & corGIM_MM$maxDelta > quantile(corGIM_MM$maxDelta, 0.75))] <- "NEG"
+neg.genes <- sort(corGIM_MM[corGIM_MM$TFRegulator=="NEG",1])
+corGIM_MM$label <- corGIM_MM$GeneIntegrationMatrix_name
+corGIM_MM$label[corGIM_MM$TFRegulator %ni% c("POS", "NEG")] <- ""
+
+# MOTIF DEV ATTEMPT
+#corGIM_MM <- corGIM_MM[order(abs(corGIM_MM$cor), decreasing = TRUE), ]
+#corGIM_MM <- corGIM_MM[which(!duplicated(gsub("\\-.*","",corGIM_MM[,"MotifMatrix_name"]))), ]
+#corGIM_MM$TFRegulator <- "NONE"
+#corGIM_MM$TFRegulator[which(corGIM_MM$cor > 0.5 & corGIM_MM$padj < 0.01 & corGIM_MM$motifDev > 1)] <- "POS"
+#pos.genes <- sort(corGIM_MM[corGIM_MM$TFRegulator=="POS",1])
+#corGIM_MM$TFRegulator[which(corGIM_MM$cor < (-0.5) & corGIM_MM$padj < 0.01 & corGIM_MM$motifDev < (-1))] <- "NEG"
+#neg.genes <- sort(corGIM_MM[corGIM_MM$TFRegulator=="NEG",1])
+#corGIM_MM$label <- corGIM_MM$GeneIntegrationMatrix_name
+#corGIM_MM$label[corGIM_MM$TFRegulator %ni% c("POS", "NEG")] <- ""
+
+#names <- c(pos.genes, neg.genes)
+
+library(ggrepel)
+p <- ggplot(data.frame(corGIM_MM), aes(cor, maxDelta, color = TFRegulator, label = label)) +
+  geom_point() + 
+  #geom_text(hjust = 0, vjust = 0) +
+  geom_label_repel(aes(label = label),
+                   min.segment.length = 0,
+                   max.overlaps = Inf) +
+   theme_ArchR() + theme(text = element_text(size = 15)) +
+  geom_vline(xintercept = 0, lty = "dashed") + 
+  scale_color_manual(values = c("POS"="slateblue1", "NEG"="firebrick3", "NONE"="grey")) +
+  xlab("Correlation To Gene Expression") +
+  ylab("Max TF Motif Delta") +
+  scale_y_continuous(
+    expand = c(0,0), 
+    limits = c(0, max(corGIM_MM$maxDelta)*1.05)
+  )  + NoLegend()
+p
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Fig2-Annotation2Based_Motif_GEX_Correlation_Volcano.png", height = 6, width = 6)
+
+```
+
+# Subset MBC-like and PC-like for figures 2 and 3
+```{r}
+mbc.like.ref.mbc.cells <- archR$cellNames[archR$final_annotation %in% c("MBC-like MBC", "Reference MBC", "Polyclonal MBC")]
+
+illegal.test <- archR[mbc.like.ref.mbc.cells] # figure out which patients have fewer than 100 cells. these will mess up downstream iterative LSI
+table(illegal.test$samplesClean)
+
+mbc.like.ref.mbc.cells <- archR$cellNames[archR$final_annotation %in% c("MBC-like MBC", "Reference MBC", "Polyclonal MBC") & archR$samplesClean %ni% c("01-163", "WM43", "04-006")] # add these patients to the filtering
+
+mbc.like.ref.sub <- subsetArchRProject(
+  ArchRProj = archR,
+  cells = mbc.like.ref.mbc.cells,
+  outputDirectory = "MBC-like_RefMBC_Subset",
+  dropCells = TRUE,
+  logFile = NULL,
+  threads = getArchRThreads(),
+  force = FALSE
+)
+
+### Recluster
+mbc.like.ref.sub <- addIterativeLSI(
+  ArchRProj = mbc.like.ref.sub,
+  useMatrix = "PeakMatrix",
+  name = "IterativeLSI_MBC_like",
+  iterations = 2,
+  clusterParams = list( # based on Seurat's FindClusters()
+    resolution = c(0.25),
+    sampleCells = 2000,
+    n.start = 10
+  ),
+  varFeatures = 20000,
+  dimsToUse = 1:20,
+  force = T
+)
+
+mbc.like.ref.sub <- addHarmony(
+  mbc.like.ref.sub,
+  reducedDims = "IterativeLSI_MBC_like",
+  name = "MBClike_Harmony",
+  groupBy = "batch"
+)
+
+mbc.like.ref.sub <- addUMAP(
+    ArchRProj = mbc.like.ref.sub, 
+    reducedDims = "MBClike_Harmony", 
+    name = "MBClike_Harmony_UMAP", 
+    nNeighbors = 30, 
+    minDist = 0.5, 
+    metric = "cosine",
+    force = T
+)
+
+saveArchRProject(ArchRProj = mbc.like.ref.sub,
+                 outputDirectory = "/Users/gagled01/morganLab/Waldenstroms/Waldenstroms_Git/MBC-like_RefMBC_Subset",
+                 overwrite = TRUE)
+
+rm(mbc.like.ref.sub)
+
+### NOW PC
+pc.like.ref.mbc.cells <- archR$cellNames[archR$final_annotation %in% c("PC-like MBC", "Reference MBC")]
+
+illegal.test <- archR[pc.like.ref.mbc.cells] # figure out which patients have fewer than 100 cells. these will mess up downstream iterative LSI
+table(illegal.test$samplesClean)
+
+pc.like.ref.sub <- subsetArchRProject(
+  ArchRProj = archR,
+  cells = pc.like.ref.mbc.cells,
+  outputDirectory = "PC-like_RefMBC_Subset",
+  dropCells = TRUE,
+  logFile = NULL,
+  threads = getArchRThreads(),
+  force = TRUE
+)
+
+### Recluster
+pc.like.ref.sub <- addIterativeLSI(
+  ArchRProj = pc.like.ref.sub,
+  useMatrix = "PeakMatrix",
+  name = "IterativeLSI_PC_like",
+  iterations = 2,
+  clusterParams = list( # based on Seurat's FindClusters()
+    resolution = c(0.25),
+    sampleCells = 2000,
+    n.start = 10
+  ),
+  varFeatures = 20000,
+  dimsToUse = 1:20,
+  force = T
+)
+
+pc.like.ref.sub <- addHarmony(
+  pc.like.ref.sub,
+  reducedDims = "IterativeLSI_PC_like",
+  name = "PClike_Harmony",
+  groupBy = "batch"
+)
+
+
+pc.like.ref.sub <- addUMAP(
+    ArchRProj = pc.like.ref.sub, 
+    reducedDims = "PClike_Harmony", 
+    name = "PC_Harmony_UMAP", 
+    nNeighbors = 30, 
+    minDist = 0.5, 
+    metric = "cosine",
+    force = T
+)
+
+saveArchRProject(ArchRProj = pc.like.ref.sub,
+                 outputDirectory = "/Users/gagled01/morganLab/Waldenstroms/Waldenstroms_Git/PC-like_RefMBC_Subset",
+                 overwrite = TRUE)
+rm(pc.like.ref.sub)
+```
+# Fig 2A - MBC-like UMAPs
+```{r}
+mbc.like.ref.sub <- loadArchRProject(path = "/Users/gagled01/morganLab/Waldenstroms/Waldenstroms_Git/MBC-like_RefMBC_Subset")
+
+#plotEmbedding(ArchRProj = mbc.like.ref.sub, colorBy = "cellColData", name = "final_annotation", embedding = "MBClike_Harmony_UMAP")
+#plotEmbedding(ArchRProj = mbc.like.ref.sub, colorBy = "cellColData", name = "samplesRefCombined", embedding = "MBClike_Harmony_UMAP")
+#plotEmbedding(ArchRProj = mbc.like.ref.sub, colorBy = "cellColData", name = "hasTopCDR3", embedding = "MBClike_Harmony_UMAP")
+#plotEmbedding(ArchRProj = mbc.like.ref.sub, colorBy = "cellColData", name = "MBClike_Annos", embedding = "MBClike_Harmony_UMAP")
+
+# Make new column for this specific UMAP
+mbc.like.ref.sub$MBClike_Annos <- mbc.like.ref.sub$final_annotation
+mbc.like.ref.sub$MBClike_Annos[mbc.like.ref.sub$samplesClean == "WM65"] <- "WM65"
+mbc.like.ref.sub$MBClike_Annos[mbc.like.ref.sub$samplesClean == "WM47"] <- "WM47"
+mbc.like.ref.sub$MBClike_Annos[mbc.like.ref.sub$samplesClean == "WM46"] <- "WM46"
+mbc.like.ref.sub$MBClike_Annos[mbc.like.ref.sub$samplesClean == "WM54"] <- "WM54"
+mbc.like.ref.sub$MBClike_Annos[mbc.like.ref.sub$samplesClean == "01-076" & mbc.like.ref.sub$final_annotation == "MBC-like MBC"] <- "01-076"
+mbc.like.ref.sub$MBClike_Annos[mbc.like.ref.sub$samplesClean == "01-190"] <- "01-190"
+mbc.like.ref.sub$MBClike_Annos[mbc.like.ref.sub$MBClike_Annos == "MBC-like MBC"] <- "Polyclonal MBC"
+
+
+cols <- ArchRPalettes$paired[1:length(table(mbc.like.ref.sub$MBClike_Annos))]
+names(cols) <- names(table(mbc.like.ref.sub$MBClike_Annos)) # THIS IS HOW YOU USE PAL! NEED TO SET NUMBERS TO THE PROPER CLUSTER LABEL!!!! YEAAAAYUH!
+cols[4] <- "ivory2"
+cols[3] <- "thistle2"
+
+plotEmbedding(ArchRProj = mbc.like.ref.sub, colorBy = "cellColData", name = "MBClike_Annos", embedding = "MBClike_Harmony_UMAP", pal = cols, 
+              labelMeans = F,
+              baseSize = 10,
+              labelSize = 5.5,
+              fgColor = "black",
+              bgWidth = 0) + NoLegend() + theme(title = element_blank(),
+                                                axis.title.x = element_text(size = 15, face = "bold"),
+                                                axis.title.y = element_text(size = 15, face = "bold"))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure2/Figure2_MBC-like_UMAP.pdf", height = 6, width = 6)
+```
+Figure 2: MBC-like vs. Reference MBC - GEX VOLCANO PLOT
+```{r}
+
+# Get DEG
+markerTest <- getMarkerFeatures(
+  ArchRProj = archR, 
+  useMatrix = "GeneIntegrationMatrix",
+  groupBy = "final_annotation",
+  testMethod = "wilcoxon",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  useGroups = "MBC-like MBC",
+  bgdGroups = c("Reference MBC")
+)
+
+markerList <- getMarkers(markerTest, cutOff = "FDR < 100")
+df.motifs <- as.data.frame(markerList$`MBC-like`)
+df.motifs$log10.fdr <- log10(df.motifs$FDR) * -1
+
+
+# Do it again with lower threshold for better volcano plot
+motifs.up <- df.motifs[df.motifs$Log2FC > 0.25,]
+motifs.do <- df.motifs[df.motifs$Log2FC < (-0.25),]
+sorted.up <- motifs.up[order(motifs.up$FDR),]
+sorted.do <- motifs.do[order(motifs.do$FDR),]
+
+combined.df <- rbind(motifs.up, motifs.do)
+combined.df$category <- NA
+combined.df$category[combined.df$Log2FC > 0.5 & combined.df$FDR < 0.000000005] <- "POS"
+combined.df$category[combined.df$Log2FC < (-0.5) & combined.df$FDR < 0.000000005] <- "NEG"
+mbc.upreg.df <- na.omit(combined.df[combined.df$category == "POS",])
+write.csv(mbc.upreg.df, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/differential_tests/MBC-like_vs_RefMBC_Wilcoxon_MBC_Upregulated_GEX.csv")
+pc.upreg.df <- na.omit(combined.df[combined.df$category == "NEG",])
+write.csv(pc.upreg.df, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/differential_tests/MBC-like_vs_RefMBC_Wilcoxon_PC_Upregulated_GEX.csv")
+
+up.labels <- c("ARHGAP24", "RHEX", "SOX5", "VOPP1", "OSBPL10", "PLCG2", "IL7", "PYHIN1", "VOPP1", "PTPRG", "CD24", "BCL2",  "AFF3", "IL2RA", "HCK",  "CDK1", "MKI67", "ZNF804A", "SGSM1", "EPHB1", "AKT3", "FUT8", "PTPRJ", "HDAC9", "PLEKHG1", "SYK", "CARD11", "CD79B", "TCF4", "ITGB2", "TRIO", "IL2RA", "FCRL1", "MAP3K5")
+do.labels <- c("SSBP2", "FOS", "CD96", "SCML4", "CDK6", "SATB1", "FOSB", "NRIP1", "TPT1", "SLAMF1", "PAG1", "CD86", "BCL7A", "GLIPR1", "ITGB2", "PTGER4", "TRIM38", "CR1", "CR2", "CD96", "PAG1", "BCL7A", "LMO2", "ARNTL", "EGR2", "IGF1R", "NRG1", "CCL3", "ACTN1", "PLAG1")
+comb.labels <- c(up.labels, do.labels)
+
+combined.df$labels <- combined.df$name
+combined.df$labels[combined.df$labels %ni% comb.labels] <- ""
+table(combined.df$labels)
+
+ggplot(combined.df, aes(Log2FC, log10.fdr, color = category, label = labels)) +
+  geom_point() + 
+  #geom_text(hjust = 0, vjust = 0) +
+  geom_label_repel(box.padding = 1,
+                   min.segment.length = 1,
+                   max.overlaps = Inf,
+                   position = position_nudge_center(x = 0.8, y = 0.1, center_x = 0, direction = "split")) +
+  theme_ArchR() + theme(text = element_text(size = 15),
+                        axis.title.y = element_text(size = 15, face = "bold"),
+                        axis.title.x = element_text(size = 15, face = "bold")) +
+  geom_vline(xintercept = 0, lty = "dashed") + 
+  scale_color_manual(values = c("POS"="firebrick3", "NEG"="black", "NONE"="grey")) +
+  xlab("Log2FC") +
+  ylab("-Log10(FDR)") + scale_x_continuous(limits = c(-4, 4))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure2/Figure2-MBC-like_vs_RefMBC_GEX_Volcano.pdf", height = 9, width = 8)
+```
+Fig 2 - PC LIKE MBC VS. REF MBC - GEX VOLCANO
+```{r}
+# Get DEG
+markerTest <- getMarkerFeatures(
+  ArchRProj = archR, 
+  useMatrix = "GeneIntegrationMatrix",
+  groupBy = "final_annotation",
+  testMethod = "wilcoxon",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  useGroups = "PC-like MBC",
+  bgdGroups = c("Reference MBC")
+)
+
+markerList <- getMarkers(markerTest, cutOff = "FDR < 100")
+df.motifs <- as.data.frame(markerList$`PC-like MBC`)
+df.motifs$log10.fdr <- log10(df.motifs$FDR) * -1
+
+# Do it again with lower threshold for better volcano plot
+motifs.up <- df.motifs[df.motifs$Log2FC > 0.25,]
+motifs.do <- df.motifs[df.motifs$Log2FC < (-0.25),]
+sorted.up <- motifs.up[order(motifs.up$FDR),]
+sorted.do <- motifs.do[order(motifs.do$FDR),]
+
+combined.df <- rbind(motifs.up, motifs.do)
+combined.df$category <- NA
+combined.df$category[combined.df$Log2FC > 0.5 & combined.df$FDR < 0.000000005] <- "POS"
+combined.df$category[combined.df$Log2FC < (-0.5) & combined.df$FDR < 0.000000005] <- "NEG"
+mbc.upreg.df <- na.omit(combined.df[combined.df$category == "POS",])
+write.csv(mbc.upreg.df, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/differential_tests/PC-like_vs_RefMBC_Wilcoxon_MBC_Upregulated_GEX.csv")
+pc.upreg.df <- na.omit(combined.df[combined.df$category == "NEG",])
+write.csv(pc.upreg.df, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/differential_tests/PC-like_vs_RefMBC_Wilcoxon_PC_Upregulated_GEX.csv")
+
+up.labels <- c("PELI1", "CARMIL1", "TRIO", "PRDM2", "PTPRG", "FBXW7", "EML6", "TLE4", "COBLL1", "EIF2AK3", "CDK14", "IFNG-AS1", "CPEB4", "MSI2", "GAB1", "ZEB1", "BCL2", "DUSP22", "VOPP1", "PMAIP1", "FOXP1", "ITM2B", "OSBPL10", "CD9", "JCHAIN", "XBP1", "HIVEP1", "FNBP1", "PIK3CA", "ATF6")
+####
+do.labels <- c("SORL1", "SEPT6", "SMIM14", "PAG1", "SEPT7", "NRIP1", "CLEC2B", "CHD3", "SATB1", "CD96", "TMSB4X", "CR2", "SLAMF1", "SCML4", "SLAMF1", "CHI3L2", "LMO2", "FOS", "SCML4","ACTB", "HIF1A", "CD48", "CR1", "BCL6", "RIPOR2", "TPM3", "MUM1", "CD72", "SCML1", "FCRL4", "ITGAX", "S100A8")
+
+comb.labels <- c(up.labels, do.labels)
+
+combined.df$labels <- combined.df$name
+combined.df$labels[combined.df$labels %ni% comb.labels] <- ""
+table(combined.df$labels)
+
+ggplot(combined.df, aes(Log2FC, log10.fdr, color = category, label = labels)) +
+  geom_point() + 
+  #geom_text(hjust = 0, vjust = 0) +
+  geom_label_repel(box.padding = 1,
+                   min.segment.length = 1,
+                   max.overlaps = Inf,
+                   position = position_nudge_center(x = 0.8, y = 0.1, center_x = 0, direction = "split")) +
+   theme_ArchR() + theme(text = element_text(size = 15),
+                         axis.title.x = element_text(size = 15, face = "bold"),
+                         axis.title.y = element_text(size = 15, face = "bold")) +
+  geom_vline(xintercept = 0, lty = "dashed") + 
+  scale_color_manual(values = c("POS"="slateblue1", "NEG"="black", "NONE"="grey")) +
+  xlab("Log2FC") +
+  ylab("-Log10(FDR)") + scale_x_continuous(limits = c(-4.5, 4.5)) + scale_y_continuous(limits = c(0, 140))
+
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure2/Fig2-PC-like-MBC_vs_RefMBC_GEX_Volcano.pdf", height = 9, width = 8)
+```
+# PC-LIKE ANALYSIS! ####
+# Fig 2 - PC-like UMAP
+```{r}
+pc.like.ref.sub <- loadArchRProject(path = "/Users/gagled01/morganLab/Waldenstroms/Waldenstroms_Git/PC-like_RefMBC_Subset")
+
+#plotEmbedding(ArchRProj = pc.like.ref.sub, colorBy = "cellColData", name = "final_annotation", embedding = "PC_Harmony_UMAP")
+#plotEmbedding(ArchRProj = pc.like.ref.sub, colorBy = "cellColData", name = "samplesRefCombined", embedding = "PC_Harmony_UMAP")
+#plotEmbedding(ArchRProj = pc.like.ref.sub, colorBy = "cellColData", name = "hasTopCDR3", embedding = "PC_Harmony_UMAP")
+
+pc.like.ref.sub$PClike_Annos <- pc.like.ref.sub$samplesRefCombined
+pc.like.ref.sub$PClike_Annos[pc.like.ref.sub$samplesRefCombined == "Reference"] <- "Reference MBC"
+
+cols <- ArchRPalettes$bear[1:length(table(pc.like.ref.sub$PClike_Annos))]
+names(cols) <- names(table(pc.like.ref.sub$PClike_Annos)) # THIS IS HOW YOU USE PAL! NEED TO SET NUMBERS TO THE PROPER CLUSTER LABEL!!!! YEAAAAYUH!
+cols[6] <- "ivory2"
+cols[7] <- "burlywood"
+
+
+plotEmbedding(ArchRProj = pc.like.ref.sub, colorBy = "cellColData", name = "PClike_Annos", embedding = "PC_Harmony_UMAP", pal = cols, 
+              labelMeans = F,
+              baseSize = 10,
+              labelSize = 6,
+              fgColor = "black",
+              bgWidth = 0) + NoLegend() + theme(title = element_blank(),
+                                                axis.title.x = element_text(size = 15, face = "bold"),
+                                                axis.title.y = element_text(size = 15, face = "bold"))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure2/Figure2_PC-like_ReclusteredUMAP.pdf", height = 6, width = 6)
+```
+Fig 2 - MBClike GEX UMAPs 
+```{r}
+genes_up <- c("AFF3", "BCL2", "CD79B",  
+           "OSBPL10", "FCHSD2", "VOPP1")
+genes_do <- c("SSBP2", "FOS", "CD96", 
+            "CR1", "CR2", "SLAMF1")
+
+p <- plotEmbedding(
+    ArchRProj = mbc.like.ref.sub, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = genes_up, 
+    embedding = "MBClike_Harmony_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = getImputeWeights(mbc.like.ref.sub)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.text.x=element_blank(), 
+        axis.ticks.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 2),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Fig2_MBClike_vs_Ref_SelectGeneUMAPs_Up.png", height = 9, width = 6)
+
+###
+
+p <- plotEmbedding(
+    ArchRProj = mbc.like.ref.sub, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = genes_do, 
+    embedding = "MBClike_Harmony_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = getImputeWeights(mbc.like.ref.sub)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.text.x=element_blank(), 
+        axis.ticks.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 2),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Fig2_MBClike_vs_Ref_SelectGeneUMAPs_Down.png", height = 9, width = 6)
+```
+# Fig 2 - MBC-like comparison VOLCANO --- MOTIFS ---
+```{r}
+# Get DEG
+markerTest <- getMarkerFeatures(
+  ArchRProj = archR, 
+  useMatrix = "MotifMatrix",
+  groupBy = "final_annotation",
+  testMethod = "wilcoxon",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  useGroups = "MBC-like MBC",
+  bgdGroups = c("Reference MBC")
+)
+
+# Up in MBC-like
+markerList.motifs <- getMarkers(markerTest, cutOff = "FDR <= 100")
+df.motifs <- as.data.frame(markerList.motifs$`MBC-like MBC`)
+df.motifs$log10.fdr <- log10(df.motifs$FDR) * -1
+#df.motifs$log2MeanDiff <- log2(df.motifs$MeanDiff)
+
+
+motifs.up <- df.motifs[df.motifs$MeanDiff > 0,]
+motifs.do <- df.motifs[df.motifs$MeanDiff < -(0),]
+sorted.motifs.up <- motifs.up[order(-motifs.up$log10.fdr),]
+sorted.motifs.do <- motifs.do[order(-motifs.do$log10.fdr),]
+
+combined.df.motifs <- rbind(sorted.motifs.up, sorted.motifs.do)
+combined.df.motifs$category <- NA
+combined.df.motifs$category[combined.df.motifs$MeanDiff > 0.025 & combined.df.motifs$FDR < 0.000000005] <- "POS"
+combined.df.motifs$category[combined.df.motifs$MeanDiff < (-0.025) & combined.df.motifs$FDR < 0.000000005] <- "NEG"
+mbc.upreg.df <- na.omit(combined.df.motifs[combined.df.motifs$category == "POS",])
+write.csv(mbc.upreg.df, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/DifferentialTestResults/MBC-like_vs_RefMBC_MOTIFS_UpMBClikeMBC.csv")
+pc.upreg.df <- na.omit(combined.df.motifs[combined.df.motifs$category == "NEG",])
+write.csv(pc.upreg.df, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/DifferentialTestResults/MBC-like_vs_RefMBC_MOTIFS_UpRefMBC.csv")
+
+motifs.labels.up <- sorted.motifs.up$name[1:25]
+markerMotifs.labels.up <- getFeatures(archR, select = paste(motifs.labels.up, collapse="|"), useMatrix = "MotifMatrix")
+markerMotifs.labels.up <- grep("z:", markerMotifs.labels.up, value = TRUE)
+markerMotifs.labels.up <- markerMotifs.labels.up[markerMotifs.labels.up %ni% c("z:AC0021266_638")]
+
+motifs.labels.do <- sorted.motifs.do$name[1:25]
+markerMotifs.labels.do <- getFeatures(archR, select = paste(motifs.labels.do, collapse="|"), useMatrix = "MotifMatrix")
+markerMotifs.labels.do <- grep("z:", markerMotifs.labels.do, value = TRUE)
+
+comb.labels.motifs <- c(motifs.labels.up, motifs.labels.do)
+to_add <- c("SP8_226", "SP7_241", "SP9_283",  "MEF2A_639", "TCF4_97", "ID3_38", "ID4_75", "REL_721",
+            "JUN_143", "STAT6_776", "ETV6_335", "SMAD4_739", "BATF_129",  "BACH2_113")
+comb.labels.motifs <- c(to_add, comb.labels.motifs)
+comb.labels.motifs.sub <- comb.labels.motifs[comb.labels.motifs %ni% c("ENSG00000250096_734", "DDIT3_141", "NFYC_800")]
+
+combined.df.motifs$labels <- combined.df.motifs$name
+combined.df.motifs$labels[combined.df.motifs$labels %ni% comb.labels.motifs.sub] <- ""
+combined.df.motifs$labels <- gsub("_*[^_]*$", "", combined.df.motifs$labels)
+
+# Plot
+ggplot(combined.df.motifs, aes(MeanDiff, log10.fdr, color = category, label = labels)) +
+  geom_point() + 
+  #geom_text(hjust = 0, vjust = 0) +
+  geom_label_repel(box.padding = 1,
+                   min.segment.length = 1,
+                   max.overlaps = Inf, 
+                   position = position_nudge_center(x = 0.06, y = 0.001, center_x = 0, direction = "split")) + 
+   theme_ArchR() + theme(text = element_text(size = 15),
+                         axis.title.x = element_text(size = 15, face = "bold"),
+                         axis.title.y = element_text(size = 15, face = "bold")) +
+  geom_vline(xintercept = 0, lty = "dashed") + 
+  scale_color_manual(values = c("POS"="goldenrod", "NEG"="black", "NONE"="grey")) +
+  xlab("MeanDiff") +
+  ylab("-Log10(FDR)") + scale_x_continuous(limits = c(-0.45, 0.45)) + scale_y_continuous(limits = c(0, 140))
+
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure2/Fig2-MBC-like-MBC_vs_RefMBC_MOTIF_Volcano.pdf", height = 9, width = 8)
+```
+Fig 2 - MBC-LIKE MOTIF UMAPS 
+```{r}
+genes_up <- c("ARID3A", "KLF2", "SP7", "SP8", "ZNF219","FUBP1") # alternating up and down for proper output on plot
+motifs.fixed <- getFeatures(mbc.like.ref.sub, select = paste(genes_up, collapse="|"), useMatrix = "MotifMatrix")
+motifs.fixed <- grep("z:", motifs.fixed, value = TRUE)
+motifs.fixed <- c(motifs.fixed[6], motifs.fixed[1], 
+                  motifs.fixed[3], motifs.fixed[5],
+                  motifs.fixed[4], motifs.fixed[2])
+
+p <- plotEmbedding(
+    ArchRProj = mbc.like.ref.sub, 
+    colorBy = "MotifMatrix", 
+    name = motifs.fixed, 
+    embedding = "MBClike_Harmony_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$horizonExtra,
+    imputeWeights = getImputeWeights(mbc.like.ref.sub)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.text.x=element_blank(), 
+        axis.ticks.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 2),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure2-MBC-like_vs_RefMBC_SelectMOTIF-UMAPs_UP.png", height = 9, width = 6)
+
+### NOW DOWN
+genes_do <- c("RUNX1", "RUNX2", "CBFB", "EBF1", "FOS", "JUN") # alternating up and down for proper output on plot
+motifs.fixed <- getFeatures(mbc.like.ref.sub, select = paste(genes_do, collapse="|"), useMatrix = "MotifMatrix")
+motifs.fixed <- grep("z:", motifs.fixed, value = TRUE)
+motifs.fixed <- c(motifs.fixed[2], motifs.fixed[3], 
+                  motifs.fixed[1], motifs.fixed[11],
+                  motifs.fixed[7], motifs.fixed[4])
+
+p <- plotEmbedding(
+    ArchRProj = mbc.like.ref.sub, 
+    colorBy = "MotifMatrix", 
+    name = motifs.fixed, 
+    embedding = "MBClike_Harmony_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$horizonExtra,
+    imputeWeights = getImputeWeights(mbc.like.ref.sub)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.text.x=element_blank(), 
+        axis.ticks.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 2),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure2-MBC-like_vs_RefMBC_SelectMOTIF-UMAPs_DOWN.png", height = 9, width = 6)
+```
+# Fig 2 - PC-like comparison VOLCANO --- MOTIFS ---
+```{r}
+# Get DEG
+markerTest <- getMarkerFeatures(
+  ArchRProj = archR, 
+  useMatrix = "MotifMatrix",
+  groupBy = "final_annotation",
+  testMethod = "wilcoxon",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  useGroups = "PC-like MBC",
+  bgdGroups = c("Reference MBC")
+)
+
+# Up in MBC-like
+markerList.motifs <- getMarkers(markerTest, cutOff = "FDR <= 100")
+df.motifs <- as.data.frame(markerList.motifs$`PC-like MBC`)
+df.motifs$log10.fdr <- log10(df.motifs$FDR) * -1
+
+motifs.up <- df.motifs[df.motifs$MeanDiff > 0,]
+motifs.do <- df.motifs[df.motifs$MeanDiff < -(0),]
+sorted.motifs.up <- motifs.up[order(-motifs.up$log10.fdr),]
+sorted.motifs.do <- motifs.do[order(-motifs.do$log10.fdr),]
+
+combined.df.motifs <- rbind(sorted.motifs.up, sorted.motifs.do)
+combined.df.motifs$category <- NA
+combined.df.motifs$category[combined.df.motifs$MeanDiff > 0.025 & combined.df.motifs$FDR < 0.000000005] <- "POS"
+combined.df.motifs$category[combined.df.motifs$MeanDiff < (-0.025) & combined.df.motifs$FDR < 0.000000005] <- "NEG"
+mbc.upreg.df <- na.omit(combined.df.motifs[combined.df.motifs$category == "POS",])
+write.csv(mbc.upreg.df, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/DifferentialTestResults/PC-like_vs_RefMBC_MOTIFS_UpPClikeMBC.csv")
+pc.upreg.df <- na.omit(combined.df.motifs[combined.df.motifs$category == "NEG",])
+write.csv(pc.upreg.df, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/DifferentialTestResults/PC-like_vs_RefMBC_MOTIFS_UpReferenceMBC.csv")
+
+motifs.labels.up <- sorted.motifs.up$name[1:30]
+markerMotifs.labels.up <- getFeatures(archR, select = paste(motifs.labels.up, collapse="|"), useMatrix = "MotifMatrix")
+markerMotifs.labels.up <- grep("z:", markerMotifs.labels.up, value = TRUE)
+
+motifs.labels.do <- sorted.motifs.do$name[1:30]
+markerMotifs.labels.do <- getFeatures(archR, select = paste(motifs.labels.do, collapse="|"), useMatrix = "MotifMatrix")
+markerMotifs.labels.do <- grep("z:", markerMotifs.labels.do, value = TRUE)
+
+comb.labels.motifs <- c(motifs.labels.up, motifs.labels.do)
+comb.labels.motifs.sub <- comb.labels.motifs[comb.labels.motifs %ni% c("AC0021266_638", "ENSG00000250096_734", "KLF15_223", "MECP2_645", "DDIT3_141", "MECP2_645", "MESP2_94", "MEF2D_642", "MEF2B_643")]
+to_add <- c("SNAI1_199", "LMO2_808", "REL_721", "RELA_722", "TWIST1_42", "NFKB1_719", "NFKB2_714", "ESR1_661", 
+            "HIVEP1_170", "IRF8_633", "SMAD4_739", "SMAD1_744")
+comb.labels.motifs.sub <- c(comb.labels.motifs.sub, to_add)
+
+combined.df.motifs$labels <- combined.df.motifs$name
+combined.df.motifs$labels[combined.df.motifs$labels %ni% comb.labels.motifs.sub] <- ""
+combined.df.motifs$labels <- gsub("_*[^_]*$", "", combined.df.motifs$labels)
+
+# Plot
+ggplot(combined.df.motifs, aes(MeanDiff, log10.fdr, color = category, label = labels)) +
+  geom_point() + 
+  #geom_text(hjust = 0, vjust = 0) +
+  geom_label_repel(box.padding = 1,
+                   min.segment.length = 1.5,
+                   max.overlaps = Inf,
+                   position = position_nudge_center(x = 0.08, y = 0.001, center_x = 0, direction = "split")) +
+   theme_ArchR() + theme(text = element_text(size = 15),
+                         axis.title.x = element_text(size = 15, face = "bold"),
+                         axis.title.y = element_text(size = 15, face = "bold")) +
+  geom_vline(xintercept = 0, lty = "dashed") + 
+  scale_color_manual(values = c("POS"="darkcyan", "NEG"="black", "NONE"="grey")) +
+  xlab("MeanDiff") +
+  ylab("-Log10(FDR)") + scale_x_continuous(limits = c(-0.35, 0.35)) + scale_y_continuous(limits = c(0, 140))
+
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure2/Fig2-PC-like-MBC_vs_RefMBC_MOTIF_Volcano.pdf", height = 9, width = 8)
+```
+# FIG 2 PC LIKE GEX UMAPS
+```{r}
+genes_up <- c("PELI1", "MSI2",
+           "JCHAIN", "PMAIP1",
+           "EIF2AK3", "BCL2")
+genes_do <- c("")
+
+p <- plotEmbedding(
+    ArchRProj = pc.like.ref.sub, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = genes_up, 
+    embedding = "PC_Harmony_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = getImputeWeights(pc.like.ref.sub)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.text.x=element_blank(), 
+        axis.ticks.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 2),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Fig2_PClike_RefMBC_SelectGenesUMAP_UP.png", height = 9, width = 6)
+
+genes_do <- c("SMIM14", "SORL1",
+              "PAG1", "SLAMF1",
+              "BCL6", "CR2")
+
+p <- plotEmbedding(
+    ArchRProj = pc.like.ref.sub, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = genes_do, 
+    embedding = "PC_Harmony_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = getImputeWeights(pc.like.ref.sub)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.text.x=element_blank(), 
+        axis.ticks.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 2),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Fig2_PClike_RefMBC_SelectGenesUMAP_DO.png", height = 9, width = 6)
+```
+# FIG 3 PCLIKE MOTIF UMAPS
+```{r}
+genes_up <- c("ARID3A", "FUBP1", "ID3", "TCF4", "SNAI1", "TWIST1")
+motifs.fixed <- getFeatures(pc.like.ref.sub, select = paste(genes_up, collapse="|"), useMatrix = "MotifMatrix")
+motifs.fixed <- grep("z:", motifs.fixed, value = TRUE)
+motifs.fixed <- c(motifs.fixed[8], motifs.fixed[1],
+                  motifs.fixed[5], motifs.fixed[3],
+                  motifs.fixed[2], motifs.fixed[4])
+
+p <- plotEmbedding(
+    ArchRProj = pc.like.ref.sub, 
+    colorBy = "MotifMatrix", 
+    name = motifs.fixed, 
+    embedding = "PC_Harmony_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$horizonExtra,
+    imputeWeights = getImputeWeights(pc.like.ref.sub)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.text.x=element_blank(), 
+        axis.ticks.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 2),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Fig3-PC-like_vs_RefMBC_BothSets_MOTIFS_UP.png", height = 9, width = 6)
+
+### DOWN
+genes_do <- c("SPI1", "BCL11A", "RUNX1", "RUNX2", "CBFB", "DNMT1")
+motifs.fixed <- getFeatures(pc.like.ref.sub, select = paste(genes_do, collapse="|"), useMatrix = "MotifMatrix")
+motifs.fixed <- grep("z:", motifs.fixed, value = TRUE)
+motifs.fixed <- c(motifs.fixed[4], motifs.fixed[6],
+                  motifs.fixed[2], motifs.fixed[3],
+                  motifs.fixed[1], motifs.fixed[5])
+
+p <- plotEmbedding(
+    ArchRProj = pc.like.ref.sub, 
+    colorBy = "MotifMatrix", 
+    name = motifs.fixed, 
+    embedding = "PC_Harmony_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$horizonExtra,
+    imputeWeights = getImputeWeights(pc.like.ref.sub)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.text.x=element_blank(), 
+        axis.ticks.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 2),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Fig3-PC-like_vs_RefMBC_BothSets_MOTIFS_DOWN.png", height = 9, width = 6)
+```
+# FIG 2 VENN DIAGRAM OVERLAP ANALYSIS - GENE EXPRESSION #
+```{r}
+# PC-like MBC GEX
+pc.like_markerTest <- getMarkerFeatures(
+  ArchRProj = archR, 
+  useMatrix = "GeneIntegrationMatrix",
+  groupBy = "final_annotation",
+  testMethod = "wilcoxon",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  useGroups = "PC-like MBC",
+  bgdGroups = c("Reference MBC")
+)
+
+pc.like_markerList <- getMarkers(pc.like_markerTest, cutOff = "FDR < 100")
+pc.like_df.gex <- as.data.frame(pc.like_markerList$`PC-like MBC`)
+pc.like_gex.up <- pc.like_df.gex[pc.like_df.gex$Log2FC > 0.5 & pc.like_df.gex$FDR < 0.000000005,]
+pc.like_gex.do <- pc.like_df.gex[pc.like_df.gex$Log2FC < (-0.5) & pc.like_df.gex$FDR < 0.000000005,]
+
+pc.like_sorted.up <- pc.like_gex.up[order(pc.like_gex.up$FDR),]
+pc.like_sorted.do <- pc.like_gex.do[order(pc.like_gex.do$FDR),]
+
+pc.like_gex_genes_up <- pc.like_gex.up$name
+pc.like_gex_genes_do <- pc.like_gex.do$name
+
+### MBC-like MBC GEX
+
+mbc.like_markerTest <- getMarkerFeatures(
+  ArchRProj = archR, 
+  useMatrix = "GeneIntegrationMatrix",
+  groupBy = "final_annotation",
+  testMethod = "wilcoxon",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  useGroups = "MBC-like MBC",
+  bgdGroups = c("Reference MBC")
+)
+
+mbc.like_markerList <- getMarkers(mbc.like_markerTest, cutOff = "FDR < 100")
+mbc.like_df.gex <- as.data.frame(mbc.like_markerList$`MBC-like MBC`)
+mbc.like_gex.up <- mbc.like_df.gex[mbc.like_df.gex$Log2FC > 0.5 & mbc.like_df.gex$FDR < 0.000000005,]
+mbc.like_gex.do <- mbc.like_df.gex[mbc.like_df.gex$Log2FC < (-0.5) & mbc.like_df.gex$FDR < 0.000000005,]
+mbc.like_sorted.up <- mbc.like_gex.up[order(mbc.like_gex.up$FDR),]
+mbc.like_sorted.do <- mbc.like_gex.do[order(mbc.like_gex.do$FDR),]
+
+mbc.like_gex_genes_up <- mbc.like_gex.up$name
+mbc.like_gex_genes_do <- mbc.like_gex.do$name
+
+
+gg_color_hue <- function(n) {
+  hues = seq(15, 375, length = n + 1)
+  hcl(h = hues, l = 65, c = 100)[1:n]
+}
+
+gg_color_hue(8)
+
+library(venn)
+library(VennDiagram)
+library(RColorBrewer)
+library(svglite)
+myCol <- brewer.pal(2, "Pastel2")
+
+#pdf(file="venn.pdf")
+venn.gex <- venn.diagram(
+        x = list(pc.like_gex_genes_up, mbc.like_gex_genes_up),
+        category.names = c("", ""),
+          imagetype="svg" ,
+          inverted = F,
+          #main.pos = c("MBC-like", "PC-like"),
+          height = 480 , 
+          width = 480 , 
+          resolution = 300,
+          compression = "lzw",
+          lwd = 1,
+          col=c("#00A9FF", '#F8766D'),
+          fill = c(alpha("#00A9FF",0.3), alpha('#F8766D',0.3)),
+          cex = 0.4,
+          fontfamily = "sans",
+          cat.cex = 0.3,
+          cat.default.pos = "outer",
+          cat.pos = c(-27, 27),
+          cat.dist = c(0.055, 0.055),
+          cat.fontfamily = "sans",
+          cat.col = c("#00A9FF", '#F8766D'),
+          #rotation = 1,
+        filename = NULL,
+        output=TRUE,
+          # Circles
+)
+
+ggsave(venn.gex, file="/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/MBClike_vs_PClike_VennDiagram_GEX.svg", device = "svg", height = 8, width = 8)
+```
+ VENN DIAGREAM CONTS
+```{r}
+# Getting some top genes to include for each side
+pc.like.top.names <- pc.like_sorted.up$name
+mbc.like.top.names <- mbc.like_sorted.up$name
+
+# Get overlaps and uniques
+#shared <- Reduce(intersect, list(pc.like.top.names, mbc.like.top.names, intermediate.top.names))
+#pc.unique <- setdiff(pc.like.top.names, union(mbc.like.top.names, intermediate.top.names))
+#mbc.unique <- setdiff(mbc.like.top.names, pc.like.top.names)
+
+shared <- Reduce(intersect, list(pc.like.top.names, mbc.like.top.names))
+pc.unique <- setdiff(pc.like.top.names, mbc.like.top.names)
+mbc.unique <- setdiff(mbc.like.top.names, pc.like.top.names)
+
+# Write out
+write.csv(shared, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/differential_tests/Subtype_Shared_UpRegGEX.csv")
+write.csv(pc.unique, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/differential_tests/PC-Unique_UpRegGEX.csv")
+write.csv(mbc.unique, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/differential_tests/MBC-Unique_UpRegGEX.csv")
+
+# Now for downreg
+pc.like.do.names <- pc.like_sorted.do$name
+mbc.like.do.names <- mbc.like_sorted.do$name
+
+shared.do <- Reduce(intersect, list(pc.like.do.names, mbc.like.do.names))
+pc.unique.do <- setdiff(pc.like.do.names, mbc.like.do.names)
+mbc.unique.do <- setdiff(mbc.like.do.names, pc.like.do.names)
+
+# Write out
+write.csv(shared.do, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/differential_tests/Subtype_Shared_DownRegGEX.csv")
+write.csv(pc.unique.do, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/differential_tests/PC-Unique_DownRegGEX.csv")
+write.csv(mbc.unique.do, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/differential_tests/MBC-Unique_DownRegGEX.csv")
+
+```
+# VENN DIAGRAM OVERLAP ANALYSIS - MOTIFS #
+```{r}
+gg_color_hue <- function(n) {
+  hues = seq(15, 375, length = n + 1)
+  hcl(h = hues, l = 65, c = 100)[1:n]
+}
+
+# PC-like MBC motif
+pc.like_markerTest <- getMarkerFeatures(
+  ArchRProj = archR, 
+  useMatrix = "MotifMatrix",
+  groupBy = "final_annotation",
+  testMethod = "wilcoxon",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  useGroups = "PC-like MBC",
+  bgdGroups = c("Reference MBC")
+)
+
+pc.like_markerList <- getMarkers(pc.like_markerTest, cutOff = "FDR < 100")
+pc.like_df.motif <- as.data.frame(pc.like_markerList$`PC-like MBC`)
+pc.like_motif.up <- pc.like_df.motif[pc.like_df.motif$MeanDiff > 0.025 & pc.like_df.motif$FDR < 0.000000005,]
+pc.like_motif.up.stdev <- pc.like_df.motif[abs(pc.like_df.motif$MeanDiff - mean(pc.like_df.motif$MeanDiff)) > sd(pc.like_df.motif$MeanDiff),]
+pc.like_motif.do <- pc.like_df.motif[pc.like_df.motif$MeanDiff < (-0.025) & pc.like_df.motif$FDR < 0.000000005,]
+pc.like_sorted.up <- pc.like_motif.up[order(pc.like_motif.up$FDR),]
+pc.like_sorted.up.stdev <- pc.like_motif.up.stdev[order(pc.like_motif.up.stdev$FDR),]
+pc.like_sorted.do <- pc.like_motif.do[order(pc.like_motif.do$FDR),]
+
+pc.like_motif_genes_up <- pc.like_motif.up$name
+pc.like_motif_genes_do <- pc.like_motif.do$name
+
+### MBC-like MBC motif
+
+mbc.like_markerTest <- getMarkerFeatures(
+  ArchRProj = archR, 
+  useMatrix = "MotifMatrix",
+  groupBy = "final_annotation",
+  testMethod = "wilcoxon",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  useGroups = "MBC-like MBC",
+  bgdGroups = c("Reference MBC")
+)
+
+mbc.like_markerList <- getMarkers(mbc.like_markerTest, cutOff = "FDR < 100")
+mbc.like_df.motif <- as.data.frame(mbc.like_markerList$`MBC-like MBC`)
+mbc.like_motif.up <- mbc.like_df.motif[mbc.like_df.motif$MeanDiff > 0.025 & mbc.like_df.motif$FDR < 0.000000005,]
+mbc.like_motif.up.stdev <- mbc.like_df.motif[abs(mbc.like_df.motif$MeanDiff - mean(mbc.like_df.motif$MeanDiff)) > sd(mbc.like_df.motif$MeanDiff),]
+mbc.like_motif.do <- mbc.like_df.motif[mbc.like_df.motif$MeanDiff < (-0.025) & mbc.like_df.motif$FDR < 0.000000005,]
+mbc.like_sorted.up <- mbc.like_motif.up[order(mbc.like_motif.up$FDR),]
+mbc.like_sorted.up.stdev <- mbc.like_motif.up.stdev[order(mbc.like_motif.up.stdev$FDR),]
+mbc.like_sorted.do <- mbc.like_motif.do[order(mbc.like_motif.do$FDR),]
+
+mbc.like_motif_genes_up <- mbc.like_motif.up$name
+mbc.like_motif_genes_do <- mbc.like_motif.do$name
+
+gg_color_hue(8)
+
+library(VennDiagram)
+
+venn.diagram(
+        x = list(pc.like_motif_genes_up, mbc.like_motif_genes_up),
+        category.names = c("", ""),
+          imagetype="png" ,
+          inverted = T,
+          height = 480 , 
+          width = 480 , 
+          resolution = 300,
+          compression = "lzw",
+          lwd = 1,
+          col=c("#00BFC4", '#00A9FF'),
+          fill = c(alpha("#00BFC4",0.3), alpha('#00A9FF',0.3)),
+          cex = 0.5,
+          fontfamily = "sans",
+          cat.cex = 0.3,
+          cat.default.pos = "outer",
+          cat.pos = c(-27, 27),
+          cat.dist = c(0.055, 0.055),
+          cat.fontfamily = "sans",
+          cat.col = c("#00BFC4", '#00A9FF'),
+          #rotation = 180,
+        filename = 'MBClike_PClike_MOTIFS_venn_diagramm_Up.png',
+        output=TRUE,
+          # Circles
+)
+
+
+# Getting some top genes to include for each side
+pc.like.top.names <- gsub("_.*", "", pc.like_sorted.up$name)
+mbc.like.top.names <- gsub("_.*", "", mbc.like_sorted.up$name)
+
+# Get overlaps and uniques
+shared <- Reduce(intersect, list(pc.like.top.names, mbc.like.top.names))
+pc.unique <- setdiff(pc.like.top.names, mbc.like.top.names)
+mbc.unique <- setdiff(mbc.like.top.names, pc.like.top.names)
+
+# Write out
+write.csv(shared, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/differential_tests/Venn_Subtype_Shared_UpReg_Motif.csv")
+write.csv(pc.unique, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/differential_tests/Venn_PC-Unique_UpReg_Motif.csv")
+write.csv(mbc.unique, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/differential_tests/Venn_MBC-Unique_UpReg_Motif.csv")
+```
+# Figure 3 - Subtype comparison
+### SUBTYPE COMPARISON ###
+### GEX VOLCANO ###
+```{r}
+# Get DEG
+markerTest <- getMarkerFeatures(
+  ArchRProj = archR, 
+  useMatrix = "GeneIntegrationMatrix",
+  groupBy = "final_annotation",
+  testMethod = "wilcoxon",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  useGroups = "MBC-like MBC",
+  bgdGroups = c("PC-like MBC")
+)
+
+markerList <- getMarkers(markerTest, cutOff = "FDR < 100")
+df.motifs <- as.data.frame(markerList$`MBC-like MBC`)
+df.motifs$log10.fdr <- log10(df.motifs$FDR) * -1
+motifs.up <- df.motifs[df.motifs$Log2FC > 0.5 & df.motifs$FDR < 0.000000005,]
+motifs.do <- df.motifs[df.motifs$Log2FC < (-0.5) & df.motifs$FDR < 0.000000005,]
+sorted.up <- motifs.up[order(motifs.up$FDR),]
+#write.csv(sorted.up, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/differential_tests/MBC-like_vs_PC-like_Wilcoxon_GEX_UpMBC-like.csv")
+sorted.do <- motifs.do[order(motifs.do$FDR),]
+#write.csv(sorted.do, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/differential_tests/MBC-like_vs_PC-like_Wilcoxon_GEX_UpPC-like.csv")
+
+# Do it again with lower threshold for better volcano plot
+motifs.up <- df.motifs[df.motifs$Log2FC > 0.25,]
+motifs.do <- df.motifs[df.motifs$Log2FC < (-0.25),]
+sorted.up <- motifs.up[order(motifs.up$FDR),]
+sorted.do <- motifs.do[order(motifs.do$FDR),]
+
+combined.df <- rbind(motifs.up, motifs.do)
+combined.df$category <- NA
+combined.df$category[combined.df$Log2FC > 0.5 & combined.df$FDR < 0.000000005] <- "POS"
+combined.df$category[combined.df$Log2FC < (-0.5) & combined.df$FDR < 0.000000005] <- "NEG"
+
+mbc.upreg.df <- na.omit(combined.df[combined.df$category == "POS",])
+write.csv(mbc.upreg.df, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/differential_tests/MBC-like_vs_PC-like_Wilcoxon_Motifs_MBC_Upregulated_GEX.csv")
+pc.upreg.df <- na.omit(combined.df[combined.df$category == "NEG",])
+write.csv(pc.upreg.df, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/differential_tests/MBC-like_vs_PC-like_Wilcoxon_Motifs_PC_Upregulated_GEX.csv")
+
+
+up.labels <- c("MARCH1", "RIPOR2", "SMIM14", "PLD5", "FCRL1", "AFF3", "MYO1F", "SESN3", "SGSM1","HLA-DRA", "FCHSD2", "CR2", "CD52", "ACTB", "MAP4K4",?
+  "ZEB2", "CD1C", "CD24", "HIF1A", "SOX5", "IRAK3", "VAV3", "LILRB1", "BCL11A", "SPI1", "CR1", "SYK", "IRF8", "CD74", "EPHB1", "FCRL4", "PAX5", "SPIB", "BCL6")
+
+do.labels <- c("PELI1", "EIF2AK3", "CARMIL1", "PMAIP1", "MSI2", "DUSP22", "PRDM5", "TLE", "CPEB4", "ELL2",  "LRCH1", "ERN1", "IFNG-AS1", "JCHAIN", "ZEB1", "XBP1", "CD9", "ITM2B", "AFF1",  "MYO6", "TOP1", "RRAS2", "CD9", "CXXC4-AS1", "IL15", "PRDM2", "GAB1", "CD27", "IGF1", "PIK3CA", "CADPS2", "IL6ST", "PIEZO2", "ETV6", "SMAD1", "IL15", "FOXO1", "JUND", "CD38", "RELB", "NFKB2", "REL")
+
+comb.labels <- c(up.labels, do.labels)
+
+combined.df$labels <- combined.df$name
+combined.df$labels[combined.df$labels %ni% comb.labels] <- ""
+table(combined.df$labels)
+
+ggplot(combined.df, aes(Log2FC, log10.fdr, color = category, label = labels)) +
+  geom_point() + 
+  #geom_text(hjust = 0, vjust = 0) +
+  geom_label_repel(box.padding = 1,
+                   min.segment.length = 1,
+                   max.overlaps = Inf,
+                   position = position_nudge_center(x = 0.8, y = 0.1, center_x = 0, direction = "split")) +
+   theme_ArchR() + theme(text = element_text(size = 15),
+                         axis.title.x = element_text(size = 15, face = "bold"),
+                         axis.title.y = element_text(size = 15, face = "bold")) +
+  geom_vline(xintercept = 0, lty = "dashed") + 
+  scale_color_manual(values = c("POS"="firebrick3", "NEG"="slateblue1", "NONE"="grey")) +
+  xlab("Log2FC") +
+  ylab("-Log10(FDR)") + scale_x_continuous(limits = c(-6, 6)) #+ coord_flip()
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure3/Figure3_MBC-like_vs_PC-like_GEX_Volcano.pdf", height = 8, width = 7)
+```
+# Fig 3 - MOTIF VOLCANO ---
+```{r}
+# Get DEG
+markerTest <- getMarkerFeatures(
+  ArchRProj = archR, 
+  useMatrix = "MotifMatrix",
+  groupBy = "final_annotation",
+  testMethod = "wilcoxon",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  useGroups = "MBC-like MBC",
+  bgdGroups = c("PC-like MBC")
+)
+
+# Up in MBC-like
+markerList.motifs <- getMarkers(markerTest, cutOff = "FDR <= 100")
+df.motifs <- as.data.frame(markerList.motifs$`MBC-like MBC`)
+df.motifs$log10.fdr <- log10(df.motifs$FDR) * -1
+#df.motifs$log2MeanDiff <- log2(df.motifs$MeanDiff)
+
+up <- df.motifs[df.motifs$MeanDiff > 0.025 & df.motifs$FDR < 0.000000005,]
+do <- df.motifs[df.motifs$MeanDiff < -(0.025) & df.motifs$FDR < 0.000000005,]
+sorted.up <- up[order(-up$log10.fdr),]
+#write.csv(sorted.up, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/differential_tests/MBC-like_vs_PC-like_Wilcoxon_Motifs_UpMBC-like.csv")
+sorted.do <- do[order(-do$log10.fdr),]
+#write.csv(sorted.do, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/differential_tests/MBC-like_vs_PC-like_Wilcoxon_Motifs_UpPC-like.csv")
+
+motifs.up <- df.motifs[df.motifs$MeanDiff > 0.01,]
+motifs.do <- df.motifs[df.motifs$MeanDiff < -(0.01),]
+sorted.motifs.up <- motifs.up[order(-motifs.up$log10.fdr),]
+sorted.motifs.do <- motifs.do[order(-motifs.do$log10.fdr),]
+
+combined.df.motifs <- rbind(sorted.motifs.up, sorted.motifs.do)
+combined.df.motifs$category <- NA
+combined.df.motifs$category[combined.df.motifs$MeanDiff > 0.025 & combined.df.motifs$FDR < 0.000000005] <- "POS"
+combined.df.motifs$category[combined.df.motifs$MeanDiff < (-0.025) & combined.df.motifs$FDR < 0.000000005] <- "NEG"
+
+mbc.upreg.df <- na.omit(combined.df.motifs[combined.df.motifs$category == "POS",])
+write.csv(mbc.upreg.df, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/differential_tests/MBC-like_vs_PC-like_Wilcoxon_Motifs_MBC_Upregulated.csv")
+pc.upreg.df <- na.omit(combined.df.motifs[combined.df.motifs$category == "NEG",])
+write.csv(pc.upreg.df, "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/differential_tests/MBC-like_vs_PC-like_Wilcoxon_Motifs_PC_Upregulated.csv")
+
+motifs.labels.up <- combined.df.motifs$name[combined.df.motifs$category == "POS"]
+markerMotifs.labels.up <- getFeatures(archR, select = paste(motifs.labels.up, collapse="|"), useMatrix = "MotifMatrix")
+markerMotifs.labels.up <- grep("z:", markerMotifs.labels.up, value = TRUE)
+
+motifs.labels.do <- sorted.motifs.do$name[1:30]
+markerMotifs.labels.do <- getFeatures(archR, select = paste(motifs.labels.do, collapse="|"), useMatrix = "MotifMatrix")
+markerMotifs.labels.do <- grep("z:", markerMotifs.labels.do, value = TRUE)
+
+
+comb.labels.motifs <- c(markerMotifs.labels.up, markerMotifs.labels.do)
+to_add <- c("IRF8_633", "BATF_129", "NFKB2_714", "BACH2_113", "REL_721", "NFKB1_719", "ID1_47", "ID2_35", "XBP1_109", "EBF1_67", "FOXO1_361", "IRF5_631")
+comb.labels.motifs <- c(to_add, comb.labels.motifs)
+comb.labels.motifs <- gsub("z:", "", comb.labels.motifs)
+comb.labels.motifs <- comb.labels.motifs[comb.labels.motifs %ni% c("NANOGP1_835", "ATOH8_71", "SMARCC1_651", "NFE2_119", "NFIX_738", "ENSG00000235187_346", "NANOG_433", "SNAI3_268", "ARID2_11", "NFE2L2_115", "SREBF1_22", "EBF1_67", "NAIF1_637", "ID1_47", "ID2_35", "FOXO1_361", "XBP1_109", "IRF5_631")]
+
+combined.df.motifs$labels <- combined.df.motifs$name
+combined.df.motifs$labels[combined.df.motifs$labels %ni% comb.labels.motifs] <- ""
+combined.df.motifs$labels <- gsub("_*[^_]*$", "", combined.df.motifs$labels)
+
+# Plot
+ggplot(combined.df.motifs, aes(MeanDiff, log10.fdr, color = category, label = labels)) +
+  geom_point() + 
+  #geom_text(hjust = 0, vjust = 0) +
+  geom_label_repel(box.padding = 1,
+                   min.segment.length = 1.5,
+                   max.overlaps = Inf,
+                   position = position_nudge_center(x = 0.08, y = 0.001, center_x = 0, direction = "split")) +
+   theme_ArchR() + theme(text = element_text(size = 15),
+                         axis.title.x = element_text(size = 15, face = "bold"),
+                         axis.title.y = element_text(size = 15, face = "bold")) +
+  geom_vline(xintercept = 0, lty = "dashed") + 
+  scale_color_manual(values = c("POS"="goldenrod", "NEG"="darkorchid4", "NONE"="grey")) +
+  xlab("MeanDiff") +
+  ylab("-Log10(FDR)") + scale_x_continuous(limits = c(-0.25, 0.25)) + scale_y_continuous(limits = c(0, 60))
+
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure3/Figure3_MBClike_vs_PClike_MOTIF_Volcano.pdf", height = 8, width = 7)
+
+
+
+```
+# Figure 3 - UMAPs of key genes between subtypes - GEX
+```{r}
+genes <- c("SPI1", "BCL11A", "FCHSD2", "VAV3",
+           "NFKB1", "REL", "PELI1", "CD27",
+           "BCL2", "PLCG2", "FOXP1", "OSBPL10")
+
+#enes <- c("MYO1D", "OSBPL10", "CAMK1D", "EML6")
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = genes, 
+    embedding = "UMAP_Harmony",
+    quantCut = c(0.025, 0.975),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = getImputeWeights(archR)
+)
+p
+
+p2 <- lapply(p, function(x){ 
+    x +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    ) 
+}) + NoLegend()
+
+do.call(cowplot::plot_grid, c(list(ncol = 4),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure3/Fig3_SubtypeComparison_GEX_UMAPs.pdf", height = 9, width = 12)
+
+p2 <- lapply(p, function(x){ # insanely specific ggplot adjustments to fit the legend in here properly. jesus christ lol
+    x +
+    #guides(color = FALSE, fill = FALSE) +
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.25, 0.25, 0.25, 0.25), "cm")) + # top, right, bottom, left
+    theme(legend.title = element_text(size = 6),
+          legend.text = element_text(size = 6),
+          legend.key.size = unit(0.45, "cm"),
+          #legend.title.position = "left",
+          legend.position = c(0.88, 0.775),#"right",
+          legend.direction = "vertical",
+          #legend.margin = margin(0,0,0,0),
+          legend.box.margin = margin(-10,-10,-10,-10)) +
+    theme(
+        axis.ticks.x=element_blank(),
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 4),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure3/Fig3_SubtypeComparison_GEX_UMAPs_LegendSave.pdf", height = 9, width = 12)
+```
+# FIG 3 - UMAPs of key motif markers
+```{r}
+motifs <- c("SPI1", "SPIB", "BCL11A", "ELF5",
+            "NFKB1", "REL", "ZEB1", "POU2F1",
+            "ARID3A", "FUBP1", "HOXD8", "PITX2")
+
+motif.labels <- getFeatures(archR, select = paste(motifs, collapse="|"), useMatrix = "MotifMatrix")
+motif.labels <- grep("z:", motif.labels, value = TRUE)
+motif.labels <- motif.labels[c(11,9,12,10,
+                               4,3,13,6,
+                               14,1,7,8)]
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "MotifMatrix", 
+    name = motif.labels, 
+    embedding = "UMAP_Harmony",
+    quantCut = c(0.025, 0.975),
+    pal = ArchRPalettes$horizonExtra,
+    imputeWeights = getImputeWeights(archR)
+)
+
+p2 <- lapply(p, function(x){ # insanely specific ggplot adjustments to fit the legend in here properly. jesus christ lol
+    x + 
+    #guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.25, 0.25, 0.25, 0.25), "cm")) + # top, right, bottom, left
+    theme(legend.title = element_text(size = 6),
+          legend.text = element_text(size = 6),
+          legend.key.size = unit(0.45, "cm"), 
+          #legend.title.position = "left",
+          legend.position = c(0.88, 0.775),#"right",
+          legend.direction = "vertical",
+          #legend.margin = margin(0,0,0,0),
+          legend.box.margin = margin(-10,-10,-10,-10)) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    ) + labs(fill = "DevScore")
+})
+
+do.call(cowplot::plot_grid, c(list(ncol = 4),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure3/WM_Figure3_SubtypeComparison_MOTIF_UMAPs.pdf", height = 9, width = 12)
+```
+
+### DEG Volcano of Clonal PCs vs Ref PCs -  ###
+```{r}
+`%ni%` <- Negate(`%in%`)
+
+up.labels <- c("LYN", "BANK1", "MEF2A", "PRKCB", "ZNF804A",  "OSBPL10", "BCL2", "CDK14", "TRIO", "EBF1", "PLCG2", "CAMK2D", "CAMK1D", "FOXP1", "SOX5", "CBLB", "LRBA", "KDM4C", "AFF3", "PRDM2", "VOPP1")
+
+do.labels <- c("TPT1", "PAG1", "FTL", "BCL7A", "OST4", "FOS", "PRMD1", "REEP5", "SERF2", "XBP1", "SEPT6", "NANS", "SSR4", "BHLHE41", "SEPT7", "SLAMF7", "SLAMF1", "SELENOK", "FOSB", "SEPT2", "SYNE1")
+
+comb.labels <- c(up.labels, do.labels)
+
+combined.df$labels <- combined.df$name
+combined.df$labels[combined.df$labels %ni% comb.labels] <- ""
+table(combined.df$labels)
+
+ggplot(combined.df, aes(Log2FC, log10.fdr, color = category, label = labels)) +
+  geom_point() + 
+  #geom_text(hjust = 0, vjust = 0) +
+  geom_label_repel(box.padding = 1,
+                   min.segment.length = 1,
+                   max.overlaps = Inf,
+                   position = position_nudge_center(x = 0.8, y = 0.1, center_x = 0, direction = "split")) +
+   theme_ArchR() + theme(text = element_text(size = 15),
+                         axis.title.x = element_text(size = 15, face = "bold"),
+                         axis.title.y = element_text(size = 15, face = "bold")) +
+  geom_vline(xintercept = 0, lty = "dashed") + 
+  scale_color_manual(values = c("POS"="indianred2", "NEG"="skyblue", "NONE"="grey")) +
+  xlab("Log2FC") +
+  ylab("-Log10(FDR)") + scale_x_continuous(limits = c(-5, 5)) + scale_y_continuous(limits = c(0, 75))
+
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Fig2-ClonalPC-vs_RefPC__Volcano.png", height = 9, width = 8)
+```
+# PC GEX UMAPs
+```{r}
+genes <- c("LYN", "PRDM1", "BANK1", "XBP1", "MEF2A", "GNAS")
+
+p <- plotEmbedding(
+    ArchRProj = pc.sub, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = genes, 
+    embedding = "PC_Only_Recluster_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = getImputeWeights(pc.sub)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.text.x=element_blank(), 
+        axis.ticks.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 2),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Fig2-ClonalPC_vs_RefPC_UMAPs.png", height = 9, width = 6)
+```
+# PC MOTIFS
+```{r}
+# Get DEG
+markerTest <- getMarkerFeatures(
+  ArchRProj = pc.sub, 
+  useMatrix = "MotifMatrix",
+  groupBy = "tripartite_annotation",
+  testMethod = "wilcoxon",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  useGroups = "Clonal PCs",
+  bgdGroups = c("Reference PC")
+)
+
+# Up in MBC-like
+markerList.motifs <- getMarkers(markerTest, cutOff = "FDR <= 100")
+df.motifs <- as.data.frame(markerList.motifs$`Clonal PCs`)
+df.motifs$log10.fdr <- log10(df.motifs$FDR) * -1
+#df.motifs$log2MeanDiff <- log2(df.motifs$MeanDiff)
+
+motifs.up <- df.motifs[df.motifs$MeanDiff > 0,]
+motifs.do <- df.motifs[df.motifs$MeanDiff < 0,]
+sorted.motifs.up <- motifs.up[order(motifs.up$FDR),]
+write.csv(sorted.motifs.up, "/Users/gagled01/morganLab/Waldenstroms/singlecell/ClonalPCs_vs_Ref-PC_FDR-Sorted_DifferentialTest_MOTIFS_UpPC.csv")
+sorted.motifs.do <- motifs.do[order(motifs.do$FDR),]
+write.csv(sorted.motifs.up, "/Users/gagled01/morganLab/Waldenstroms/singlecell/ClonalPCs_vs_Ref-PC_FDR-Sorted_DifferentialTest_MOTIFS_DownPC.csv")
+
+sorted.motifs.up
+sorted.motifs.do
+
+combined.df.motifs <- rbind(sorted.motifs.up, sorted.motifs.do)
+combined.df.motifs$category <- NA
+combined.df.motifs$category[combined.df.motifs$MeanDiff > 0.025 & combined.df.motifs$FDR < 0.05] <- "POS"
+combined.df.motifs$category[combined.df.motifs$MeanDiff < (-0.025) & combined.df.motifs$FDR < 0.05] <- "NEG"
+
+motifs.labels.up <- sorted.motifs.up$name[1:30]
+markerMotifs.labels.up <- getFeatures(mbc.like.ref.sub, select = paste(markerMotifs.labels.up, collapse="|"), useMatrix = "MotifMatrix")
+markerMotifs.labels.up <- grep("z:", markerMotifs.labels.up, value = TRUE)
+#markerMotifs.labels.up <- markerMotifs.labels.up[markerMotifs.labels.up %ni% c("")]
+
+motifs.labels.do <- sorted.motifs.do$name[1:20]
+markerMotifs.labels.do <- getFeatures(mbc.like.ref.sub, select = paste(markerMotifs.labels.do, collapse="|"), useMatrix = "MotifMatrix")
+markerMotifs.labels.do <- grep("z:", markerMotifs.labels.do, value = TRUE)
+
+comb.labels.motifs <- c(motifs.labels.up, motifs.labels.do)
+comb.labels.motifs.sub <- comb.labels.motifs[comb.labels.motifs %ni% c("ENSG00000250096_734", "ENSG00000187728_92", "PURA_813")]
+
+combined.df.motifs$labels <- combined.df.motifs$name
+combined.df.motifs$labels[combined.df.motifs$labels %ni% comb.labels.motifs.sub] <- ""
+combined.df.motifs$labels <- gsub("_*[^_]*$", "", combined.df.motifs$labels)
+
+# Plot
+ggplot(combined.df.motifs, aes(MeanDiff, log10.fdr, color = category, label = labels)) +
+  geom_point() + 
+  #geom_text(hjust = 0, vjust = 0) +
+  geom_label_repel(box.padding = 1,
+                   min.segment.length = 1.5,
+                   max.overlaps = Inf,
+                   position = position_nudge_center(x = 0.08, y = 0.001, center_x = 0, direction = "split")) +
+   theme_ArchR() + theme(text = element_text(size = 15),
+                         axis.title.x = element_text(size = 15, face = "bold"),
+                         axis.title.y = element_text(size = 15, face = "bold")) +
+  geom_vline(xintercept = 0, lty = "dashed") + 
+  scale_color_manual(values = c("POS"="olivedrab", "NEG"="magenta3", "NONE"="grey")) +
+  xlab("MeanDiff") +
+  ylab("-Log10(FDR)") + scale_x_continuous(limits = c(-0.3, 0.3)) #+ scale_y_continuous(limits = c(0, 145))
+
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Fig2-ClonalPCs_vs_RefPCs_MOTIF_Volcano.png", height = 9, width = 8)
+```
+# PC MOTIF UMAPS
+```{r}
+genes <- c("NFKB1", "RELA", "ID3", "ZFP161", "E2F5", "ZNF76")
+motifs.fixed <- getFeatures(pc.like.ref.sub, select = paste(genes, collapse="|"), useMatrix = "MotifMatrix")
+motifs.fixed <- grep("z:", motifs.fixed, value = TRUE)
+motifs.fixed <- motifs.fixed[motifs.fixed %ni% c("z:ARID3C_10", "z:ARID3B_8", "z:ARID3A_6")]
+motifs.fixed <- c(motifs.fixed[3], motifs.fixed[2], motifs.fixed[6], motifs.fixed[1], motifs.fixed[4], motifs.fixed[5])
+
+p <- plotEmbedding(
+    ArchRProj = pc.like.ref.sub, 
+    colorBy = "MotifMatrix", 
+    name = motifs.fixed, 
+    embedding = "PC_like_Recluster_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$horizonExtra,
+    imputeWeights = getImputeWeights(pc.like.ref.sub)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.text.x=element_blank(), 
+        axis.ticks.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 3),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Fig2-ClonalPCs_vs_RefPCs_MOTIF_UMAPs.png", height = 6, width = 9)
+```
+# Reference vs Non-clonal MBC
+```{r}
+# Get DEG
+markerTest <- getMarkerFeatures(
+  ArchRProj = mbc.like.ref.sub, 
+  useMatrix = "GeneIntegrationMatrix",
+  groupBy = "tripartite_annotation",
+  testMethod = "wilcoxon",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  useGroups = "Non-clonal MBC",
+  bgdGroups = c("Reference MBC")
+)
+
+markerList <- getMarkers(markerTest, cutOff = "FDR < 100")
+df.motifs <- as.data.frame(markerList$`Non-clonal MBC`)
+df.motifs$log10.fdr <- log10(df.motifs$FDR) * -1
+motifs.up <- df.motifs[df.motifs$Log2FC > 0.25,]
+motifs.do <- df.motifs[df.motifs$Log2FC < (-0.25),]
+sorted.up <- motifs.up[order(motifs.up$FDR),]
+write.csv(sorted.up, "/Users/gagled01/morganLab/Waldenstroms/singlecell/NonClonal-MBC_vs_Reference-MBC_FDR-Sorted_DifferentialTest_GEX_Up.csv")
+sorted.do <- motifs.do[order(motifs.do$FDR),]
+write.csv(sorted.do, "/Users/gagled01/morganLab/Waldenstroms/singlecell/NonClonal-MBC_vs_Reference-MBC_FDR-Sorted_DifferentialTest_GEX_Down.csv")
+
+combined.df <- rbind(motifs.up, motifs.do)
+combined.df$category <- NA
+combined.df$category[combined.df$Log2FC > 0.5 & combined.df$FDR < 0.05] <- "POS"
+combined.df$category[combined.df$Log2FC < (-0.5) & combined.df$FDR < 0.05] <- "NEG"
+
+sorted.up
+sorted.do
+```
+
+```{r}
+up.labels <- sorted.up$name[1:20]
+do.labels <- sorted.do$name[1:20]
+comb.labels <- c(up.labels, do.labels)
+
+combined.df$labels <- combined.df$name
+combined.df$labels[combined.df$labels %ni% comb.labels] <- ""
+table(combined.df$labels)
+
+library(ggpp)
+
+ggplot(combined.df, aes(Log2FC, log10.fdr, color = category, label = labels)) +
+  geom_point() + 
+  #geom_text(hjust = 0, vjust = 0) +
+  geom_label_repel(box.padding = 1,
+                   min.segment.length = 1,
+                   max.overlaps = Inf,
+                   position = position_nudge_center(x = 0.8, y = 0.1, center_x = 0, direction = "split")) +
+  theme_ArchR() + theme(text = element_text(size = 15),
+                        axis.title.y = element_text(size = 15, face = "bold"),
+                        axis.title.x = element_text(size = 15, face = "bold")) +
+  geom_vline(xintercept = 0, lty = "dashed") + 
+  scale_color_manual(values = c("POS"="firebrick3", "NEG"="slateblue1", "NONE"="grey")) +
+  xlab("Log2FC") +
+  ylab("-Log10(FDR)") + scale_x_continuous(limits = c(-4, 4))
+
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Fig2-NonClonal-MBC_vs_RefMBC_GEX_Volcano.png", height = 9, width = 8)
+```
+# Subtype analysis
+# FIGURE 3/4 - SUBTYPE ANALYSIS ####
+
+
+
+
+BTK/BCR signaling UMAPs
+```{r}
+genes <- c("CD19", "PIK3CA", "PIK3R1", "PIK3AP1")
+genes2 <- c("CD79A", "CD79B", "LYN", "SYK")
+genes3 <- c("VAV3", "PLCG2", "BTK", "BLNK", "GRB2")
+genes4 <- c("FOXO1", "FOXO3", "AKT1", "MTOR", "MDM2")
+estrogen <- c("ESR1", "ESR2", "GPER1", "B4GALT1", "CTSD")
+cycling <- c("MKI67", "UBE2C", "TUBA1B", "HMGB2")
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = genes, 
+    embedding = "BLineage_NoProgen_Recluster_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = getImputeWeights(archR)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 1),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/WM_BCR_Signaling_Genes_Part1_UMAP.png", height = 12, width = 3)
+
+###
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = genes2, 
+    embedding = "BLineage_NoProgen_Recluster_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = getImputeWeights(archR)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 1),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/WM_BCR_Signaling_Genes_Part2_UMAP.png", height = 12, width = 3)
+
+###
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = genes3, 
+    embedding = "BLineage_NoProgen_Recluster_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = getImputeWeights(archR)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 1),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/WM_BCR_Signaling_Genes_Part3_UMAP.png", height = 15, width = 3)
+
+###
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = genes4, 
+    embedding = "BLineage_NoProgen_Recluster_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = getImputeWeights(archR)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 1),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/WM_BCR_Signaling_Genes_Part4_UMAP.png", height = 15, width = 3)
+
+###
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = estrogen, 
+    embedding = "BLineage_NoProgen_Recluster_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = getImputeWeights(archR)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 1),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/WM_Estrogen_Genes_Part5_UMAP.png", height = 15, width = 3)
+
+###
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = cycling, 
+    embedding = "BLineage_NoProgen_Recluster_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = getImputeWeights(archR)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 1),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/WM_Cycling_Genes_Part6_UMAP.png", height = 12, width = 3)
+
+###
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = mbc.genes, 
+    embedding = "BLineage_NoProgen_Recluster_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = getImputeWeights(archR)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 1),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/WM_MBCGenes_Supplementary_UMAP.png", height = 18, width = 3)
+
+###
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = pc.genes, 
+    embedding = "BLineage_NoProgen_Recluster_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = getImputeWeights(archR)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 1),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/WM_PCGenes_Supplementary_UMAP.png", height = 18, width = 3)
+```
+# and Violins
+```{r}
+genes <- c("CD19", "PIK3CA", "PIK3R1", "PIK3AP1")
+genes2 <- c("CD79A", "CD79B", "LYN", "SYK")
+genes3 <- c("VAV3", "PLCG2", "BTK", "BLNK", "GRB2")
+genes4 <- c("FOXO1", "FOXO3", "AKT1", "MTOR", "MDM2")
+estrogen <- c("ESR1", "ESR2", "GPER1", "B4GALT1", "CTSD")
+cycling <- c("MKI67", "UBE2C", "TUBA1B", "HMGB2")
+mbc.genes <- c("MS4A1", "SPI1", "HLA-DRA", "CD27", "CD74", "RACK1")
+pc.genes <- c("IRF4", "JCHAIN", "MZB1", "XBP1", "PRDM1", "CADPS2")
+
+cols <- ArchRPalettes$paired
+names(cols) <- names(table(archR$tripartite_annotation)) 
+cols[1] <- "mediumseagreen"
+cols[2] <- "mediumpurple"
+cols[3] <- "firebrick3"
+cols[4] <- "orange"
+cols[5] <- "dodgerblue2"
+cols[6] <- "thistle2"
+cols[7] <- "burlywood"
+cols[8] <- "darkmagenta"
+cols[9] <- "darkkhaki"
+
+p <- plotGroups(
+    ArchRProj = archR, 
+    groupBy = "tripartite_annotation", 
+    colorBy = "GeneIntegrationMatrix", 
+    name = genes,
+    plotAs = "violin",
+    alpha = 0.4,
+    addBoxPlot = TRUE,
+    groupOrder = c("MBC-like MBC", "Intermediate MBC", "PC-like MBC", "Clonal PCs", "Non-clonal MBC", "Reference MBC", "Reference PC", "Reference Naive", "Reference GC"),
+    pal = cols
+   )
+
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        #axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_text(size = "8"), 
+        #axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_text(size = "10", face = "bold")
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 1),p2))
+
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Supplementary_BCR_Genes_Part1_Violins.png", height = 8, width = 3)
+
+###
+
+p <- plotGroups(
+    ArchRProj = archR, 
+    groupBy = "tripartite_annotation", 
+    colorBy = "GeneIntegrationMatrix", 
+    name = genes2,
+    plotAs = "violin",
+    alpha = 0.4,
+    addBoxPlot = TRUE,
+    groupOrder = c("MBC-like MBC", "Intermediate MBC", "PC-like MBC", "Clonal PCs", "Non-clonal MBC", "Reference MBC", "Reference PC", "Reference Naive", "Reference GC"),
+    pal = cols
+   )
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        #axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_text(size = "8"), 
+        #axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_text(size = "10", face = "bold")
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 1),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Supplementary_BCR_Genes_Part2_Violins.png", height = 8, width = 3)
+
+###
+
+p <- plotGroups(
+    ArchRProj = archR, 
+    groupBy = "tripartite_annotation", 
+    colorBy = "GeneIntegrationMatrix", 
+    name = genes3,
+    plotAs = "violin",
+    alpha = 0.4,
+    addBoxPlot = TRUE,
+    groupOrder = c("MBC-like MBC", "Intermediate MBC", "PC-like MBC", "Clonal PCs", "Non-clonal MBC", "Reference MBC", "Reference PC", "Reference Naive", "Reference GC"),
+    pal = cols
+   )
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        #axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_text(size = "8"), 
+        #axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_text(size = "10", face = "bold")
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 1),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Supplementary_BCR_Genes_Part3_Violins.png", height = 10, width = 3)
+
+###
+
+p <- plotGroups(
+    ArchRProj = archR, 
+    groupBy = "tripartite_annotation", 
+    colorBy = "GeneIntegrationMatrix", 
+    name = genes4,
+    plotAs = "violin",
+    alpha = 0.4,
+    addBoxPlot = TRUE,
+    groupOrder = c("MBC-like MBC", "Intermediate MBC", "PC-like MBC", "Clonal PCs", "Non-clonal MBC", "Reference MBC", "Reference PC", "Reference Naive", "Reference GC"),
+    pal = cols
+   )
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        #axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_text(size = "8"), 
+        #axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_text(size = "10", face = "bold")
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 1),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Supplementary_BCR_Genes_Part4_Violins.png", height = 10, width = 3)
+
+###
+
+p <- plotGroups(
+    ArchRProj = archR, 
+    groupBy = "tripartite_annotation", 
+    colorBy = "GeneIntegrationMatrix", 
+    name = estrogen,
+    plotAs = "violin",
+    alpha = 0.4,
+    addBoxPlot = TRUE,
+    groupOrder = c("MBC-like MBC", "Intermediate MBC", "PC-like MBC", "Clonal PCs", "Non-clonal MBC", "Reference MBC", "Reference PC", "Reference Naive", "Reference GC"),
+    pal = cols
+   )
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        #axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_text(size = "8"), 
+        #axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_text(size = "10", face = "bold")
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 1),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Supplementary_Estrogen_Part5_Violins.png", height = 10, width = 3)
+
+###
+
+
+p <- plotGroups(
+    ArchRProj = archR, 
+    groupBy = "tripartite_annotation", 
+    colorBy = "GeneIntegrationMatrix", 
+    name = cycling,
+    plotAs = "violin",
+    alpha = 0.4,
+    addBoxPlot = TRUE,
+    groupOrder = c("MBC-like MBC", "Intermediate MBC", "PC-like MBC", "Clonal PCs", "Non-clonal MBC", "Reference MBC", "Reference PC", "Reference Naive", "Reference GC"),
+    pal = cols
+   )
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        #axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_text(size = "8"), 
+        #axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_text(size = "10", face = "bold")
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 1),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Supplementary_CyclingGenes_Part6_Violins.png", height = 8, width = 3)
+
+###
+
+p <- plotGroups(
+    ArchRProj = archR, 
+    groupBy = "tripartite_annotation", 
+    colorBy = "GeneIntegrationMatrix", 
+    name = mbc.genes,
+    plotAs = "violin",
+    alpha = 0.4,
+    addBoxPlot = TRUE,
+    groupOrder = c("MBC-like MBC", "Intermediate MBC", "PC-like MBC", "Clonal PCs", "Non-clonal MBC", "Reference MBC", "Reference PC", "Reference Naive", "Reference GC"),
+    pal = cols
+   )
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        #axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_text(size = "8"), 
+        #axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_text(size = "10", face = "bold")
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 1),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Supplementary_MBC_Genes.png", height = 12, width = 3)
+
+###
+
+p <- plotGroups(
+    ArchRProj = archR, 
+    groupBy = "tripartite_annotation", 
+    colorBy = "GeneIntegrationMatrix", 
+    name = pc.genes,
+    plotAs = "violin",
+    alpha = 0.4,
+    addBoxPlot = TRUE,
+    groupOrder = c("MBC-like MBC", "Intermediate MBC", "PC-like MBC", "Clonal PCs", "Non-clonal MBC", "Reference MBC", "Reference PC", "Reference Naive", "Reference GC"),
+    pal = cols
+   )
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        #axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_text(size = "8"), 
+        #axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_text(size = "10", face = "bold")
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 1),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Supplementary_PC_Genes.png", height = 12, width = 3)
+```
+# Illegal subset to zoom in on subsets
+```{r}
+subpoocells <- archR$cellNames[archR$tripartite_annotation %in% c("MBC-like MBC")]
+illegal.archR <- archR[subpoocells,]
+
+
+
+p <- plotGroups(
+    ArchRProj = illegal.archR, 
+    groupBy = "tripartite_annotation", 
+    colorBy = "GeneIntegrationMatrix", 
+    name = pc.genes,
+    plotAs = "violin",
+    alpha = 0.4,
+    addBoxPlot = TRUE,
+    groupOrder = c("MBC-like MBC", "Intermediate MBC", "PC-like MBC"),
+    pal = cols
+   )
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        #axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_text(size = "8"), 
+        #axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_text(size = "10", face = "bold")
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 2),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Supplementary_PC_Genes_SubtypeZoomIn.png", height = 6, width = 9)
+```
+
+
+```{r}
+mbc.genes <- c("MS4A1", "SPI1", "HLA-DRA", "CD27", "CD74", "RACK1")
+pc.genes <- c("IRF4", "JCHAIN", "MZB1", "XBP1", "PRDM1", "CADPS2", "SPI1")
+
+motifs.fixed <- getFeatures(archR, select = paste(pc.genes, collapse="|"), useMatrix = "MotifMatrix")
+motifs.fixed <- grep("z:", motifs.fixed, value = TRUE)
+motifs.fixed <- motifs.fixed[motifs.fixed %ni% "z:PRDM16_211"]
+motifs.fixed <- c(motifs.fixed[3], motifs.fixed[5], motifs.fixed[6], motifs.fixed[4], motifs.fixed[1], motifs.fixed[2])
+
+###
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "MotifMatrix", 
+    name = motifs.fixed, 
+    embedding = "BLineage_NoProgen_Recluster_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = getImputeWeights(archR)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 1),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/WM_PCGenes_Motifs_Supplementary_UMAP.png", height = 15, width = 3)
+```
+```{r}
+p1 <- plotEmbedding(ArchRProj = archR_subtypes, colorBy = "cellColData", name = "samplesClean", embedding = "SubtypeMBC_Recluster_UMAP", labelAsFactors = F) +
+  theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    ) + NoLegend()
+p2 <- plotEmbedding(ArchRProj = archR_subtypes, colorBy = "cellColData", name = "source", embedding = "SubtypeMBC_Recluster_UMAP", labelAsFactors = F) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    ) + NoLegend()
+p3 <- plotEmbedding(ArchRProj = archR_subtypes, colorBy = "cellColData", name = "batch", embedding = "SubtypeMBC_Recluster_UMAP", labelAsFactors = F) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    ) + NoLegend()
+
+p1 + p2 + p3
+
+#do.call(cowplot::plot_grid, c(list(ncol = 1),p2))
+#ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/WM_Supplementary_HIST1H1E_UMAP.png", width = 6, height = 6)
+```
+
+
+# TESTING SOME PC AND PLASMABLAST ETC. GENES
+# MBC - TSC22D3, KLF6, EZR, MS4A1, CD37, JUND, HLA-DPB1, CD69, KLF2, FOXP1
+# prePB - ACTG1, ACTB, TUBA1B, TUBB, ENO1, LDHA, HSPD1, RAN, PFN1, IL2RA,
+# PB - C19ORF10, TP53INP1, PPIB, PDIA4, ITM2A, CD44, UBE2J1, SEC11C, RPN2
+# PC - IFI6, ISG15, XAF1, MX1, IFI44L, SSR4, IRF7, XBP1, CD79A, SAMD9L
+```{r}
+prepb.genes <- c("ACTG1", "ACTB", "TUBA1B", "TUBB", "ENO1", "LDHA", "HSPD1", "RAN", "PFN1")
+
+cols <- ArchRPalettes$paired
+names(cols) <- names(table(archR$tripartite_annotation)) 
+cols[1] <- "mediumseagreen"
+cols[2] <- "mediumpurple"
+cols[3] <- "firebrick3"
+cols[4] <- "orange"
+cols[5] <- "dodgerblue2"
+cols[6] <- "thistle2"
+cols[7] <- "burlywood"
+  
+p2 <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "GeneIntegrationmatrix", 
+    name = prepb.genes, 
+    embedding = "BLineage_NoProgen_Recluster_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = NULL
+)
+
+p2_cow <- lapply(p2, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 3),p2_cow))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/WM_Supplementary_BarcelonaGroup_prePBgenes_UMAP.png", height = 9, width = 9)
+
+p <- plotGroups(
+    ArchRProj = archR, 
+    groupBy = "tripartite_annotation", 
+    colorBy = "GeneIntegrationMatrix", 
+    name = prepb.genes,
+    plotAs = "violin",
+    pal = cols,
+    alpha = 0.4,
+    addBoxPlot = TRUE,
+   )
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.25, 0.25, 0.25, 0.25), "cm")) +
+    theme(
+        axis.text.x=element_blank(), 
+        axis.ticks.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        axis.title.x=element_blank(),
+        axis.title.y = element_text(size = 10, face = "bold")
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 3),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/prePB_GEX_Violins_Patients.png", height = 7, width = 8)
+```
+
+# Motif Enrichment of volcano markers
+```{r}
+# MBC-like
+mbc.motif.genes <- c("SPIB", "SPI1", "SPIC", "BCL11B", "BCL11A")
+mbc.motif.labels <- getFeatures(archR_subtypes, select = paste(mbc.motif.genes, collapse="|"), useMatrix = "MotifMatrix")
+mbc.motif.labels <- grep("z:", mbc.motif.labels, value = TRUE)
+mbc.motif.lables <- c(mbc.motif.labels[4], mbc.motif.labels[3], mbc.motif.labels[2], mbc.motif.labels[5], mbc.motif.labels[1])
+
+p <- plotEmbedding(
+    ArchRProj = archR_subtypes, 
+    colorBy = "MotifMatrix", 
+    name = mbc.motif.labels, 
+    embedding = "SubtypeMBC_Recluster_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = NULL
+)
+
+p_cow <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 5),p_cow))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/WM_MBC-like_DifferentialMBClike_vs_PClike_UMAP.png", height = 3, width = 15)
+
+# PC-like
+pc.motif.genes <- c("ID3", "POU2F2", "POU2F1",
+                    "JUN", "BACH2", "FOS", "REL", 
+                    "NFKB1", "XBP1", "IRF8")
+pc.motif.labels <- getFeatures(archR_subtypes, select = paste(pc.motif.genes, collapse="|"), useMatrix = "MotifMatrix")
+pc.motif.labels <- grep("z:", pc.motif.labels, value = TRUE)
+pc.motif.labels <- pc.motif.labels[pc.motif.labels %ni% c("z:RELA_722", "z:RELB_718", "z:FOSL1_142", "z:JUNB_139", "z:JUND_124", "z:FOSB_121", "z:FOSL2_105", "z:ARID3C_10",
+                                                          "z:ARID3B_8", "z:ARID3A_6")]
+
+p <- plotEmbedding(
+    ArchRProj = archR_subtypes, 
+    colorBy = "MotifMatrix", 
+    name = pc.motif.labels, 
+    embedding = "SubtypeMBC_Recluster_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = NULL
+)
+
+p_cow <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 5),p_cow))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/WM_PC-like_Differential_PClike_vs_PMBClike_UMAP.png", height = 6, width = 15)
+```
+
+
+# CHECKING MARKER TRACKS #
+```{r}
+markerGenes  <- c(
+    "SPIB", "SPI1", "SPIC", "BCL11B", "BCL11A", # MBC-like
+    "ID3", "ID4", "MESP1", "MESP2", "ZEB1", "POU2F2", "POU2F1", "JUN", "BACH2", "FOS", "REL", "TWIST1", "SNAI1", "REL", "NFKB1", "XBP1", "IRF8" # PC-like
+  )
+
+p <- plotBrowserTrack(
+    ArchRProj = archR, 
+    groupBy = "final_annotation", 
+    geneSymbol = "RUNX2", 
+    upstream = 50000,
+    downstream = 50000
+)
+
+grid::grid.newpage()
+grid::grid.draw(p$RUNX2)
+```
+
+### ARCHR TRAJECTORY - FIGURE 4 ####
+```{r}
+table(archR$final_annotation)
+trajectory <- c("Reference Naive", "Reference GC", "Reference MBC", "Polyclonal MBC", "MBC-like MBC", "PC-like MBC", "Clonal PC", "Polyclonal PC", "Reference PC")
+trajectory <- c("Polyclonal MBC", "MBC-like MBC", "PC-like MBC", "Clonal PC")
+
+archR <- addTrajectory(
+    ArchRProj = archR, 
+    name = "FullTrajectory", 
+    groupBy = "final_annotation",
+    reducedDims = "FinalHarmony",
+    trajectory = trajectory, 
+    embedding = "UMAP_Harmony", 
+    force = TRUE
+)
+
+# Partial trajectory (excluding refs basically)
+archR <- addTrajectory(
+    ArchRProj = archR, 
+    name = "PartialTrajectory", 
+    groupBy = "final_annotation",
+    reducedDims = "FinalHarmony",
+    trajectory = trajectory, 
+    embedding = "UMAP_Harmony", 
+    force = TRUE
+)
+
+p <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "cellColData", name = "PartialTrajectory", continuousSet = "blueYellow",  embedding = "UMAP_Harmony", baseSize = 12)
+p[[1]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/PartialTrajectory_UMAP.png", height = 6, width = 6)
+
+```
+
+```{r}
+# trajectory pseudotime heatmaps
+trajMM  <- getTrajectory(ArchRProj = archR, name = "PartialTrajectory", useMatrix = "MotifMatrix", log2Norm = FALSE)
+
+p1 <- plotTrajectoryHeatmap(trajMM, pal = paletteContinuous(set = "horizonExtra"))
+p1
+#ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/PartialTrajectory_Motif_Heatmap.png", height = 6, width = 6)
+
+trajGIM  <- getTrajectory(ArchRProj = archR, name = "PartialTrajectory", useMatrix = "GeneIntegrationMatrix", log2Norm = FALSE)
+
+p2 <- plotTrajectoryHeatmap(trajGIM, pal = paletteContinuous(set = "solarExtra"))
+p2
+#ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/PartialTrajectory_GEX_Heatmap.png", height = 6, width = 6)
+
+plotPDF(p1, p2, name = "PartialTrajectory-Heatmaps.pdf", ArchRProj = archR, addDOC = FALSE, width = 6, height = 8)
+
+
+corGIM_MM <- correlateTrajectories(trajGIM, trajMM)
+
+corGIM_MM[[1]]$matchname1
+
+trajGIM2 <- trajGIM[corGIM_MM[[1]]$name1, ]
+trajMM2 <- trajMM[corGIM_MM[[1]]$name2, ]
+
+trajCombined <- trajGIM2
+assay(trajCombined, withDimnames = F) <- t(apply(assay(trajGIM2), 1, scale)) + t(apply(assay(trajMM2), 1, scale))
+
+#combinedMat <- plotTrajectoryHeatmap(trajCombined, returnMat = TRUE, varCutOff = 0)
+
+rowOrder <- match(rownames(combinedMat), rownames(trajGIM2))
+
+ht1 <- plotTrajectoryHeatmap(trajCombined, pal = paletteContinuous(set = "whitePurple"), varCutOff = 0, labelRows = F)
+#ht1 <- plotTrajectoryHeatmap(trajCombined, pal = paletteContinuous(set = "blueYellow"), varCutOff = 0, labelRows = F)
+ht1
+
+```
+# subtype specific trajectories
+# MBC-like
+```{r}
+table(archR$final_annotation)
+trajectory <- c("Reference Naive", "Reference GC", "Reference MBC", "Polyclonal MBC", "MBC-like MBC", "PC-like MBC", "Clonal PC", "Polyclonal PC", "Reference PC")
+trajectory <- c("Polyclonal MBC", "MBC-like MBC")
+
+archR <- addTrajectory(
+    ArchRProj = archR, 
+    name = "MBClike_Trajectory", 
+    groupBy = "final_annotation",
+    reducedDims = "FinalHarmony",
+    trajectory = trajectory, 
+    embedding = "UMAP_Harmony", 
+    force = TRUE
+)
+
+p <- plotTrajectory(archR, trajectory = "MBClike_Trajectory", colorBy = "cellColData", name = "MBClike_Trajectory", continuousSet = "blueYellow",  embedding = "UMAP_Harmony", baseSize = 12)
+p[[1]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/MBC-likeTrajectory_UMAP.pdf", height = 6, width = 6)
+
+```
+
+```{r}
+trajMM  <- getTrajectory(ArchRProj = archR, name = "MBClike_Trajectory", useMatrix = "MotifMatrix", log2Norm = FALSE)
+
+p1 <- plotTrajectoryHeatmap(trajMM, pal = paletteContinuous(set = "horizonExtra"))
+p1
+#ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/PartialTrajectory_Motif_Heatmap.png", height = 6, width = 6)
+
+trajGIM  <- getTrajectory(ArchRProj = archR, name = "MBClike_Trajectory", useMatrix = "GeneIntegrationMatrix", log2Norm = FALSE)
+
+p2 <- plotTrajectoryHeatmap(trajGIM, pal = paletteContinuous(set = "solarExtra"))
+p2
+#ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/PartialTrajectory_GEX_Heatmap.png", height = 6, width = 6)
+
+plotPDF(p1, p2, name = "MBC-likeTrajectory-Heatmaps.pdf", ArchRProj = archR, addDOC = FALSE, width = 6, height = 8)
+
+pdf(file = "/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/MBC-like_MotifTrajectory_Heatmap.pdf", height = 8, width = 8)
+p1
+dev.off()
+pdf(file = "/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/MBC-like_GEXTrajectory_Heatmap.pdf", height = 8, width = 8)
+p2
+dev.off()
+
+corGIM_MM <- correlateTrajectories(trajGIM, trajMM)
+
+corGIM_MM[[1]]$matchname1
+
+trajGIM2 <- trajGIM[corGIM_MM[[1]]$name1, ]
+trajMM2 <- trajMM[corGIM_MM[[1]]$name2, ]
+
+trajCombined <- trajGIM2
+assay(trajCombined, withDimnames = F) <- t(apply(assay(trajGIM2), 1, scale)) + t(apply(assay(trajMM2), 1, scale))
+
+#combinedMat <- plotTrajectoryHeatmap(trajCombined, returnMat = TRUE, varCutOff = 0)
+
+#rowOrder <- match(rownames(combinedMat), rownames(trajGIM2))
+
+ht1 <- plotTrajectoryHeatmap(trajCombined, pal = paletteContinuous(set = "whitePurple"), varCutOff = 0, labelRows = F)
+#ht1 <- plotTrajectoryHeatmap(trajCombined, pal = paletteContinuous(set = "blueYellow"), varCutOff = 0, labelRows = F)
+ht1
+
+pdf(file = "/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/MBC-like_CombinedTraj_Heatmap.pdf", height = 8, width = 6)
+ht1
+dev.off()
+```
+# PC-like
+```{r}
+table(archR$final_annotation)
+trajectory <- c("Reference Naive", "Reference GC", "Reference MBC", "Polyclonal MBC", "MBC-like MBC", "PC-like MBC", "Clonal PC", "Polyclonal PC", "Reference PC")
+trajectory <- c("Polyclonal MBC", "PC-like MBC")
+
+archR <- addTrajectory(
+    ArchRProj = archR, 
+    name = "PClike_Trajectory", 
+    groupBy = "final_annotation",
+    reducedDims = "FinalHarmony",
+    trajectory = trajectory, 
+    embedding = "UMAP_Harmony", 
+    force = TRUE
+)
+
+p <- plotTrajectory(archR, trajectory = "PClike_Trajectory", colorBy = "cellColData", name = "PClike_Trajectory", continuousSet = "blueYellow",  embedding = "UMAP_Harmony", baseSize = 12)
+p[[1]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/PC-likeTrajectory_UMAP.pdf", height = 6, width = 6)
+
+```
+
+```{r}
+trajMM  <- getTrajectory(ArchRProj = archR, name = "PClike_Trajectory", useMatrix = "MotifMatrix", log2Norm = FALSE)
+
+p1 <- plotTrajectoryHeatmap(trajMM, pal = paletteContinuous(set = "horizonExtra"))
+p1
+#ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/PartialTrajectory_Motif_Heatmap.png", height = 6, width = 6)
+
+trajGIM  <- getTrajectory(ArchRProj = archR, name = "PClike_Trajectory", useMatrix = "GeneIntegrationMatrix", log2Norm = FALSE)
+
+p2 <- plotTrajectoryHeatmap(trajGIM, pal = paletteContinuous(set = "solarExtra"))
+p2
+#ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/PartialTrajectory_GEX_Heatmap.png", height = 6, width = 6)
+
+plotPDF(p1, p2, name = "PC-likeTrajectory-Heatmaps.pdf", ArchRProj = archR, addDOC = FALSE, width = 6, height = 8)
+
+pdf(file = "/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/PC-like_MotifTrajectory_Heatmap.pdf", height = 8, width = 8)
+p1
+dev.off()
+pdf(file = "/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/PC-like_GEXTrajectory_Heatmap.pdf", height = 8, width = 8)
+p2
+dev.off()
+
+corGIM_MM <- correlateTrajectories(trajGIM, trajMM)
+
+corGIM_MM[[1]]$matchname1
+
+with.bach2.blimp1 <- c(corGIM_MM[[1]]$matchname1, "PRDM1", "BACH2")
+
+trajGIM2 <- trajGIM[corGIM_MM[[1]]$name1, ]
+trajMM2 <- trajMM[corGIM_MM[[1]]$name2, ]
+
+trajCombined <- trajGIM2
+assay(trajCombined, withDimnames = F) <- t(apply(assay(trajGIM2), 1, scale)) + t(apply(assay(trajMM2), 1, scale))
+
+#combinedMat <- plotTrajectoryHeatmap(trajCombined, returnMat = TRUE, varCutOff = 0)
+
+#rowOrder <- match(rownames(combinedMat), rownames(trajGIM2))
+
+ht1 <- plotTrajectoryHeatmap(trajCombined, pal = paletteContinuous(set = "whitePurple"), varCutOff = 0, labelRows = F)
+#ht1 <- plotTrajectoryHeatmap(trajCombined, pal = paletteContinuous(set = "blueYellow"), varCutOff = 0, labelRows = F)
+ht1
+
+pdf(file = "/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/PC-like_CombinedTraj_Heatmap.pdf", height = 8, width = 6)
+ht1
+dev.off()
+```
+Pseudotime patient subsetting
+```{r}
+patient_subset <- function(archR_obj, id_str) {
+  idx <- BiocGenerics::which(archR$samplesClean == id_str)
+  cells <- archR_obj$cellNames[idx]
+  sub_archR <- archR_obj[cells,]
+  return(sub_archR)
+}
+```
+# Run it on em
+```{r}
+p01_076_archR <- patient_subset(archR, "01-076")
+p01_115_archR <- patient_subset(archR, "01-115")
+p01_131_archR <- patient_subset(archR, "01-131")
+p01_163_archR <- patient_subset(archR, "01-163")
+p01_190_archR <- patient_subset(archR, "01-190")
+p04_003_archR <- patient_subset(archR, "04-003")
+p04_006_archR <- patient_subset(archR, "04-006")
+wm25_archR <- patient_subset(archR, "WM25")
+wm43_archR <- patient_subset(archR, "WM43")
+wm46_archR <- patient_subset(archR, "WM46")
+wm47_archR <- patient_subset(archR, "WM47")
+wm54_archR <- patient_subset(archR, "WM54")
+wm65_archR <- patient_subset(archR, "WM65")
+```
+Reclustering individual patients and plot
+```{r}
+patient_recluster <- function(archR_obj, sample_str) {
+  print(paste0("Reclustering patient ", sample_str, "..."))
+  print("Running Iterative LSI...")
+  
+  # Add iterative LSI
+  archR_obj <- addIterativeLSI(
+  ArchRProj = archR_obj,
+  useMatrix = "TileMatrix",
+  name = "Patient_Recluster",
+  iterations = 2,
+  clusterParams = list( # based on Seurat's FindClusters()
+    resolution = c(0.25),
+    sampleCells = 2000,
+    n.start = 10
+  ),
+  varFeatures = 20000,
+  dimsToUse = 1:20,
+  force = T
+)
+
+  print("Adding UMAP...")
+# Add UMAP
+  archR_obj <- addUMAP(
+      ArchRProj = archR_obj, 
+      reducedDims = "Patient_Recluster", 
+      name = "Patient_Recluster_UMAP", 
+      nNeighbors = 30, 
+      minDist = 0.5, 
+      metric = "cosine",
+      force = T
+  )
+  return(archR_obj)
+}
+```
+
+```{r}
+p01_076_archR <- patient_recluster(p01_076_archR, "01-076")
+p01_115_archR <- patient_recluster(p01_115_archR, "01-115")
+p01_131_archR <- patient_recluster(p01_131_archR, "01-131")
+p01_163_archR <- patient_recluster(p01_163_archR, "01-163")
+p01_190_archR <- patient_recluster(p01_190_archR, "01-190")
+p04_003_archR <- patient_recluster(p04_003_archR, "04-003")
+p04_006_archR <- patient_recluster(p04_006_archR, "04-006")
+wm25_archR <- patient_recluster(wm25_archR, "WM25")
+wm43_archR <- patient_recluster(wm43_archR, "WM43")
+wm46_archR <- patient_recluster(wm46_archR, "WM46")
+wm47_archR <- patient_recluster(wm47_archR, "WM47")
+wm54_archR <- patient_recluster(wm54_archR, "WM54")
+wm65_archR <- patient_recluster(wm65_archR, "WM65")
+```
+# single patient pseudotime
+```{r}
+plotEmbedding(ArchRProj = p01_163_archR, colorBy = "cellColData", name = "final_annotation", embedding = "Patient_Recluster_UMAP") + ggtitle("")
+
+table(p01_163_archR$final_annotation)
+trajectory <- c("Polyclonal MBC", "MBC-like MBC", "PC-like MBC", "Clonal PC")
+
+p01_163_archR <- addTrajectory(
+    ArchRProj = p01_163_archR, 
+    name = "PatientTrajectory", 
+    groupBy = "final_annotation",
+    reducedDims = "Patient_Recluster",
+    trajectory = trajectory, 
+    embedding = "Patient_Recluster_UMAP", 
+    force = TRUE
+)
+
+p <- plotTrajectory(p01_163_archR, trajectory = "PatientTrajectory", colorBy = "cellColData", name = "PatientTrajectory", continuousSet = "blueYellow",  embedding = "Patient_Recluster_UMAP")
+p[[1]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/01-163_Recluster_Trajectory_UMAP.png", height = 6, width = 6)
+
+```
+```{r}
+#plotEmbedding(ArchRProj = p01_163_archR, colorBy = "cellColData", name = "final_annotation", embedding = "Patient_Recluster_UMAP") + ggtitle("")
+
+table(pc.like.ref.sub$final_annotation)
+trajectory <- c("PC-like MBC")
+
+pc.like.ref.sub <- addTrajectory(
+    ArchRProj = pc.like.ref.sub, 
+    name = "PatientTrajectory", 
+    groupBy = "final_annotation",
+    reducedDims = "PClike_Harmony",
+    trajectory = trajectory, 
+    embedding = "PC_Harmony_UMAP", 
+    force = TRUE
+)
+
+p <- plotTrajectory(pc.like.ref.sub, trajectory = "PatientTrajectory", colorBy = "cellColData", name = "PatientTrajectory", continuousSet = "blueYellow",  embedding = "PC_Harmony_UMAP")
+p[[1]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/PC-like_Recluster_Trajectory_UMAP.png", height = 6, width = 6)
+```
+
+# CORRELATED TRAJECTORY PSEUDOTIME PLOTS - MOTIFs
+```{r}
+motif.genes <- c("SPI1", "SPIB", "BCL11A", "NFKB1", "XBP1", "JUND", "ATF6", "ZEB1")
+motif.labels <- getFeatures(archR, select = paste(motif.genes, collapse="|"), useMatrix = "MotifMatrix")
+motif.labels <- grep("z:", motif.labels, value = TRUE)
+motif.labels
+
+p1 <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "MotifMatrix", name = "z:SPI1_322", embedding = "UMAP_Harmony",continuousSet = "horizonExtra")
+p2 <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "MotifMatrix", name = "z:SPIB_336", embedding = "UMAP_Harmony",continuousSet = "horizonExtra")
+p3 <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "MotifMatrix", name = "z:BCL11A_194", embedding = "UMAP_Harmony",continuousSet = "horizonExtra")
+p4 <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "MotifMatrix", name = "z:NFKB1_719", embedding = "UMAP_Harmony",continuousSet = "horizonExtra")
+p5 <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "MotifMatrix", name = "z:RELB_718", embedding = "UMAP_Harmony",continuousSet = "horizonExtra")
+p6 <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "MotifMatrix", name = "z:XBP1_109", embedding = "UMAP_Harmony",continuousSet = "horizonExtra")
+p7 <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "MotifMatrix", name = "z:JUND_124", embedding = "UMAP_Harmony",continuousSet = "horizonExtra")
+p8 <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "MotifMatrix", name = "z:ATF6_116", embedding = "UMAP_Harmony",continuousSet = "horizonExtra")
+p9 <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "MotifMatrix", name = "z:ZEB1_157", embedding = "UMAP_Harmony",continuousSet = "horizonExtra")
+
+p1[[2]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Pseudotime_Motif_SPI1.png", width = 4, height = 3)
+p2[[2]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Pseudotime_Motif_SPIB.png", width = 4, height = 3)
+p3[[2]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Pseudotime_Motif_BCL11A.png", width = 4, height = 3)
+p4[[2]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Pseudotime_Motif_NFKB1.png", width = 4, height = 3)
+p5[[2]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Pseudotime_Motif_RELB.png", width = 4, height = 3)
+p6[[2]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Pseudotime_Motif_XBP1.png", width = 4, height = 3)
+p7[[2]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Pseudotime_Motif_JUND.png", width = 4, height = 3)
+p8[[2]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Pseudotime_Motif_ATF6.png", width = 4, height = 3)
+p9[[2]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Pseudotime_Motif_ZEB1.png", width = 4, height = 3)
+
+
+#theme_ArchR(legendPosition = "right")
+p1 <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "MotifMatrix", name = "z:SPI1_322", embedding = "UMAP_Harmony",continuousSet = "horizonExtra") + theme(title = element_blank(),
+                                                                                                                                                                               legend.key.size = 1, "cm")
+p1[[1]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Pseudotime_Motif_SPI1_UMAP.png", width = 4, height = 3) 
+p4 <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "MotifMatrix", name = "z:NFKB1_719", embedding = "UMAP_Harmony",continuousSet = "horizonExtra") + theme(title = element_blank())
+p4[[1]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Pseudotime_Motif_NFKB1_UMAP.png", width = 4, height = 3)
+
+# now geX
+
+#theme_ArchR(legendPosition = "right")
+p1 <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "GeneIntegrationMatrix", name = "SPI1", embedding = "UMAP_Harmony",continuousSet = "solarExtra") 
+p1[[1]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Pseudotime_GEX_SPI1_UMAP.png", width = 4, height = 3) 
+p4 <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "GeneIntegrationMatrix", name = "NFKB1", embedding = "UMAP_Harmony",continuousSet = "solarExtra") 
+p4[[1]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Pseudotime_GEX_NFKB1_UMAP.png", width = 4, height = 3)
+```
+GEX pseudotime
+```{r}
+genes <- c("SPI1", "SPIB", "BCL11A", "NFKB1", "RELB", "XBP1", "JUND", "ATF6", "ZEB1")
+
+p1 <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "GeneIntegrationMatrix", name = "SPI1", embedding = "UMAP_Harmony",continuousSet = "solarExtra", title = "Gene Expression")
+p2 <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "GeneIntegrationMatrix", name = "SPIB", embedding = "UMAP_Harmony",continuousSet = "solarExtra")
+p3 <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "GeneIntegrationMatrix", name = "BCL11A", embedding = "UMAP_Harmony",continuousSet = "solarExtra")
+p4 <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "GeneIntegrationMatrix", name = "NFKB1", embedding = "UMAP_Harmony",continuousSet = "solarExtra")
+p5 <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "GeneIntegrationMatrix", name = "RELB", embedding = "UMAP_Harmony",continuousSet = "solarExtra")
+p6 <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "GeneIntegrationMatrix", name = "XBP1", embedding = "UMAP_Harmony",continuousSet = "solarExtra")
+p7 <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "GeneIntegrationMatrix", name = "JUND", embedding = "UMAP_Harmony",continuousSet = "solarExtra")
+p8 <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "GeneIntegrationMatrix", name = "ATF6", embedding = "UMAP_Harmony",continuousSet = "solarExtra")
+p9 <- plotTrajectory(archR, trajectory = "PartialTrajectory", colorBy = "GeneIntegrationMatrix", name = "ZEB1", embedding = "UMAP_Harmony",continuousSet = "solarExtra")
+
+p1[[2]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Pseudotime_GEX_SPI1.png", width = 4, height = 3)
+p2[[2]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Pseudotime_GEX_SPIB.png", width = 4, height = 3)
+p3[[2]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Pseudotime_GEX_BCL11A.png", width = 4, height = 3)
+p4[[2]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Pseudotime_GEX_NFKB1.png", width = 4, height = 3)
+p5[[2]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Pseudotime_GEX_RELB.png", width = 4, height = 3)
+p6[[2]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Pseudotime_GEX_XBP1.png", width = 4, height = 3)
+p7[[2]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Pseudotime_GEX_JUND.png", width = 4, height = 3)
+p8[[2]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Pseudotime_GEX_ATF6.png", width = 4, height = 3)
+p9[[2]]
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Pseudotime_GEX_ZEB1.png", width = 4, height = 8)
+
+
+#theme_ArchR(legendPosition = "right")
+
+
+```
+
+
+Pseudotime associated UMAPs
+```{r}
+motifs <- c("BCL11A", "SPIB", "STAT6", "POU2F1", "ATF6", "LMO2")
+motif.labels <- getFeatures(archR, select = paste(motifs, collapse="|"), useMatrix = "MotifMatrix")
+motif.labels <- grep("z:", motif.labels, value = TRUE)
+motif.labels <- motif.labels[-6]
+motif.labels <- c(motif.labels[4], motif.labels[5], motif.labels[2],
+                  motif.labels[3], motif.labels[1], motif.labels[6])
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "MotifMatrix", 
+    name = motif.labels, 
+    embedding = "BLineage_NoProgen_Recluster_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$horizonExtra,
+    imputeWeights = NULL
+)
+
+p_cow <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 3),p_cow))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/WM_Fig4_Pseudotime_MotifGenes_UMAP.png", height = 6, width = 9)
+
+genes <- c("NFKB1", "CD24", "CD44", "CD27")
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = genes, 
+    embedding = "BLineage_NoProgen_Recluster_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = NULL
+)
+
+p_cow <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 2),p_cow))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/WM_Fig4_Pseudotime_GEXGenes_UMAP.png", height = 6, width = 6)
+```
+# Checking BACH2/BLIMP1/IRF4 axis
+```{r}
+genes <- c("PRDM1", "BACH2", "IRF4", "SPI1","PAX5", "BCL6")
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = genes, 
+    embedding = "BLineage_NoProgen_Recluster_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = NULL
+)
+
+p_cow <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 3),p_cow))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/WM_BACH2-BLIMP1-GENES_SuppFig_UMAP.png", height = 6, width = 9)
+```
+# And some motifs
+```{r}
+motifs <- c("BACH2", "PRDM1", "IRF4", "PAX5", "BCL6", "SPI1")
+motif.labels <- getFeatures(archR, select = paste(motifs, collapse="|"), useMatrix = "MotifMatrix")
+motif.labels <- grep("z:", motif.labels, value = TRUE)
+motif.labels <- motif.labels[c(-4,-5)]
+motif.labels <- c(motif.labels[5], motif.labels[6], motif.labels[2],
+                  motif.labels[3], motif.labels[1], motif.labels[4])
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "MotifMatrix", 
+    name = motif.labels, 
+    embedding = "BLineage_NoProgen_Recluster_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$horizonExtra,
+    imputeWeights = NULL
+)
+
+p_cow <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 3),p_cow))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/WM_Fig4_Pseudotime_MotifGenes_UMAP.png", height = 6, width = 9)
+```
+
+# Get BACH2-BLIMP RATIOS
+```{r}
+archR_mbc <- loadArchRProject(path = "/Users/gagled01/morganLab/Waldenstroms/Waldenstroms_Git/ArchR_MBC-likeSubtype")
+
+mbc.matrix <- getMatrixFromProject(
+  ArchRProj = archR_mbc,
+  useMatrix = "GeneIntegrationMatrix",
+  useSeqnames = NULL,
+  verbose = TRUE,
+  binarize = FALSE,
+  threads = getArchRThreads(),
+  logFile = createLogFile("getMatrixFromProject")
+)
+
+geneintedata=assay(mbc.matrix)
+genedata=rowData(mbc.matrix)
+geneinteinfo=cbind(genedata, geneintedata)
+geneinteinfo2=as.data.frame(t(as.data.frame(geneinteinfo[,7:length(colnames(geneinteinfo))])))
+colnames(geneinteinfo2)=genedata$name
+rownames(geneinteinfo2)=colnames(geneinteinfo)[7:length(colnames(geneinteinfo))]
+
+mean.bach2 <- mean(geneinteinfo2$BACH2)
+mean.blimp1 <- mean(geneinteinfo2$PRDM1)
+ratio <- mean.bach2/mean.blimp1
+mean.bach2
+mean.blimp1
+ratio
+
+#rm(archR_mbc, mbc.matrix, genedata, geneintedata, geneinteinfo)
+```
+
+### Now for PC-like
+```{r}
+archR_pc <- loadArchRProject(path = "/Users/gagled01/morganLab/Waldenstroms/Waldenstroms_Git/ArchR_PC-likeSubtype")
+
+pc.matrix <- getMatrixFromProject(
+  ArchRProj = archR_pc,
+  useMatrix = "GeneIntegrationMatrix",
+  useSeqnames = NULL,
+  verbose = TRUE,
+  binarize = FALSE,
+  threads = getArchRThreads(),
+  logFile = createLogFile("getMatrixFromProject")
+)
+
+geneintedata.pc=assay(pc.matrix)
+genedata.pc=rowData(pc.matrix)
+geneinteinfo.pc=cbind(genedata.pc, geneintedata.pc)
+geneinteinfo2.pc=as.data.frame(t(as.data.frame(geneinteinfo.pc[,7:length(colnames(geneinteinfo.pc))])))
+colnames(geneinteinfo2.pc)=genedata.pc$name
+rownames(geneinteinfo2.pc)=colnames(geneinteinfo.pc)[7:length(colnames(geneinteinfo.pc))]
+
+mean.bach2.pc <- mean(geneinteinfo2.pc$BACH2)
+mean.blimp1.pc <- mean(geneinteinfo2.pc$PRDM1)
+ratio.pc <- mean.bach2.pc/mean.blimp1.pc
+mean.bach2.pc
+mean.blimp1.pc
+ratio.pc
+```
+
+### Now for Int
+```{r}
+archR_int <- loadArchRProject(path = "/Users/gagled01/morganLab/Waldenstroms/Waldenstroms_Git/ArchR_IntermediateSubtype")
+
+int.matrix <- getMatrixFromProject(
+  ArchRProj = archR_int,
+  useMatrix = "GeneIntegrationMatrix",
+  useSeqnames = NULL,
+  verbose = TRUE,
+  binarize = FALSE,
+  threads = getArchRThreads(),
+  logFile = createLogFile("getMatrixFromProject")
+)
+
+geneintedata.int=assay(int.matrix)
+genedata.int=rowData(int.matrix)
+geneinteinfo.int=cbind(genedata.int, geneintedata.int)
+geneinteinfo2.int=as.data.frame(t(as.data.frame(geneinteinfo.int[,7:length(colnames(geneinteinfo.int))])))
+colnames(geneinteinfo2.int)=genedata.int$name
+rownames(geneinteinfo2.int)=colnames(geneinteinfo.int)[7:length(colnames(geneinteinfo.int))]
+
+mean.bach2.int <- mean(geneinteinfo2.int$BACH2)
+mean.blimp1.int <- mean(geneinteinfo2.int$PRDM1)
+ratio.int <- mean.bach2.int/mean.blimp1.int
+mean.bach2.int
+mean.blimp1.int
+ratio.int
+```
+# and ref cells
+```{r}
+idsKeep <- as.character(archR$cellNames[archR$samplesClean %in% "01-115"])
+illegal.archR.refmbc <- archR[archR$cellNames %in% idsKeep,]
+
+refmbc.matrix <- getMatrixFromProject(
+  ArchRProj = illegal.archR.refmbc,
+  useMatrix = "GeneIntegrationMatrix",
+  useSeqnames = NULL,
+  verbose = TRUE,
+  binarize = FALSE,
+  threads = getArchRThreads(),
+  logFile = createLogFile("getMatrixFromProject")
+)
+
+matrix <- assay(refmbc.matrix)
+
+idsKeep2 <- as.character(archR$cellNames[archR$final_annotation %in% "PC-like MBC"])
+illegal.archR.refmbc2 <- archR[archR$cellNames %in% idsKeep2,]
+
+refmbc.matrix2 <- getMatrixFromProject(
+  ArchRProj = illegal.archR.refmbc2,
+  useMatrix = "GeneIntegrationMatrix",
+  useSeqnames = NULL,
+  verbose = TRUE,
+  binarize = FALSE,
+  threads = getArchRThreads(),
+  logFile = createLogFile("getMatrixFromProject")
+)
+
+matrix2 <- assay(refmbc.matrix2)
+
+sum(matrix[21483,])
+
+table(rowSums(matrix) == 0)
+table(rowSums(matrix2) == 0)
+
+
+
+generefmbcedata.refmbc=assay(refmbc.matrix)
+genedata.refmbc=rowData(refmbc.matrix)
+generefmbceinfo.refmbc=cbind(genedata.refmbc, generefmbcedata.refmbc)
+generefmbceinfo2.refmbc=as.data.frame(t(as.data.frame(generefmbceinfo.refmbc[,7:length(colnames(generefmbceinfo.refmbc))])))
+colnames(generefmbceinfo2.refmbc)=genedata.refmbc$name
+rownames(generefmbceinfo2.refmbc)=colnames(generefmbceinfo.refmbc)[7:length(colnames(generefmbceinfo.refmbc))]
+
+mean.bach2.refmbc <- mean(generefmbceinfo2.refmbc$BACH2)
+mean.blimp1.refmbc <- mean(generefmbceinfo2.refmbc$PRDM1)
+ratio.refmbc <- mean.blimp1.refmbc/mean.bach2.refmbc
+mean.bach2.refmbc
+mean.blimp1.refmbc
+ratio.refmbc
+
+### 
+
+idsKeep <- as.character(archR$cellNames[archR$tripartite_annotation %in% "Reference PC"])
+illegal.archR.refpc <- archR[archR$cellNames %in% idsKeep,]
+
+refpc.matrix <- getMatrixFromProject(
+  ArchRProj = illegal.archR.refpc,
+  useMatrix = "GeneIntegrationMatrix",
+  useSeqnames = NULL,
+  verbose = TRUE,
+  binarize = FALSE,
+  threads = getArchRThreads(),
+  logFile = createLogFile("getMatrixFromProject")
+)
+
+generefpcedata.refpc=assay(refpc.matrix)
+genedata.refpc=rowData(refpc.matrix)
+generefpceinfo.refpc=cbind(genedata.refpc, generefpcedata.refpc)
+generefpceinfo2.refpc=as.data.frame(t(as.data.frame(generefpceinfo.refpc[,7:length(colnames(generefpceinfo.refpc))])))
+colnames(generefpceinfo2.refpc)=genedata.refpc$name
+rownames(generefpceinfo2.refpc)=colnames(generefpceinfo.refpc)[7:length(colnames(generefpceinfo.refpc))]
+
+mean.bach2.refpc <- mean(generefpceinfo2.refpc$BACH2)
+mean.blimp1.refpc <- mean(generefpceinfo2.refpc$PRDM1)
+ratio.refpc <- mean.blimp1.refpc/mean.bach2.refpc
+mean.bach2.refpc
+mean.blimp1.refpc
+ratio.refpc
+
+### 
+
+idsKeep <- as.character(archR$cellNames[archR$tripartite_annotation %in% "Reference Naive"])
+illegal.archR.refnaive <- archR[archR$cellNames %in% idsKeep,]
+
+refnaive.matrix <- getMatrixFromProject(
+  ArchRProj = illegal.archR.refnaive,
+  useMatrix = "GeneIntegrationMatrix",
+  useSeqnames = NULL,
+  verbose = TRUE,
+  binarize = FALSE,
+  threads = getArchRThreads(),
+  logFile = createLogFile("getMatrixFromProject")
+)
+
+generefnaiveedata.refnaive=assay(refnaive.matrix)
+genedata.refnaive=rowData(refnaive.matrix)
+generefnaiveeinfo.refnaive=cbind(genedata.refnaive, generefnaiveedata.refnaive)
+generefnaiveeinfo2.refnaive=as.data.frame(t(as.data.frame(generefnaiveeinfo.refnaive[,7:length(colnames(generefnaiveeinfo.refnaive))])))
+colnames(generefnaiveeinfo2.refnaive)=genedata.refnaive$name
+rownames(generefnaiveeinfo2.refnaive)=colnames(generefnaiveeinfo.refnaive)[7:length(colnames(generefnaiveeinfo.refnaive))]
+
+mean.bach2.refnaive <- mean(generefnaiveeinfo2.refnaive$BACH2)
+mean.blimp1.refnaive <- mean(generefnaiveeinfo2.refnaive$PRDM1)
+ratio.refnaive <- mean.blimp1.refnaive/mean.bach2.refnaive
+mean.bach2.refnaive
+mean.blimp1.refnaive
+ratio.refnaive
+
+### 
+
+idsKeep <- as.character(archR$cellNames[archR$tripartite_annotation %in% "Reference GC"])
+illegal.archR.refgc <- archR[archR$cellNames %in% idsKeep,]
+
+refgc.matrix <- getMatrixFromProject(
+  ArchRProj = illegal.archR.refgc,
+  useMatrix = "GeneIntegrationMatrix",
+  useSeqnames = NULL,
+  verbose = TRUE,
+  binarize = FALSE,
+  threads = getArchRThreads(),
+  logFile = createLogFile("getMatrixFromProject")
+)
+
+generefgcedata.refgc=assay(refgc.matrix)
+genedata.refgc=rowData(refgc.matrix)
+generefgceinfo.refgc=cbind(genedata.refgc, generefgcedata.refgc)
+generefgceinfo2.refgc=as.data.frame(t(as.data.frame(generefgceinfo.refgc[,7:length(colnames(generefgceinfo.refgc))])))
+colnames(generefgceinfo2.refgc)=genedata.refgc$name
+rownames(generefgceinfo2.refgc)=colnames(generefgceinfo.refgc)[7:length(colnames(generefgceinfo.refgc))]
+
+mean.bach2.refgc <- mean(generefgceinfo2.refgc$BACH2)
+mean.blimp1.refgc <- mean(generefgceinfo2.refgc$PRDM1)
+ratio.refgc <- mean.blimp1.refgc/mean.bach2.refgc
+mean.bach2.refgc
+mean.blimp1.refgc
+ratio.refgc
+```
+# New fig 1B
+```{r}
+genes <- c("PRDM1", "IRF4", "CD38", "SDC1",
+           "SPI1", "MS4A1", "BACH2", "CD74",
+           "AFF3", "FCHSD2", "CD24", "FCRL1",
+           "CD79B", "SOX5", "LRMP", "PIEZO2",
+           "JCHAIN", "XBP1", "CD27", "NFKB1"
+           )
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = genes, 
+    embedding = "BLineage_NoProgen_Recluster_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = NULL
+)
+
+p_cow <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.15, 0.15, 0.15, 0.15), "cm")) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 4),p_cow))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/WM_Fig1B_MarkerGenes_UMAP.png", height = 15, width = 12)
+```
+
+```{r}
+gene_list2 <- c("FOS", "JUN", "BATF", "BATF3", "PRDM1")
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = gene_list, 
+    embedding = "Harmony_UMAP",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = NULL
+)
+p
+
+p_cow <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.25, 0.25, 0.25, 0.25), "cm")) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 1),p_cow))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/WM_Supplement_PrePlasmablast_Genes.png", height = 15, width = 3)
+```
+
+# Footprinting setup
+```{r}
+motifPositions <- getPositions(archR) # get sequence positions of motifs
+
+motifs <- c("SPI1", "SPIB", "XBP1", "NFKB1", "POU2F1", "BACH2", "BLIMP1") # motifs of interest
+markerMotifs <- unlist(lapply(motifs, function(x) grep(x, names(motifPositions), value = TRUE)))
+#markerMotifs <- markerMotifs[markerMotifs %ni% "SREBF1_22"]
+markerMotifs
+
+archR <- addGroupCoverages(ArchRProj = archR, groupBy = "final_annotation") # pseudobulk
+
+archR <- getFootprints( # get footprints of selected motifs per pseudobulk
+  ArchRProj = archR, 
+  positions = motifPositions[markerMotifs], 
+  groupBy = "final_annotation"
+)
+```
+# Plotting footprints
+```{r}
+plotFootprints(
+  seFoot = seFoot,
+  ArchRProj = archR, 
+  normMethod = "Subtract",
+  plotName = "Footprints-Subtract-Bias",
+  addDOC = FALSE,
+  smoothWindow = 5
+)
+```
+# Checking total genes
+```{r}
+gex_matrix <- getMatrixFromProject(
+  ArchRProj = archR,
+  useMatrix = "GeneIntegrationMatrix",
+  useSeqnames = NULL,
+  verbose = TRUE,
+  binarize = FALSE,
+  threads = getArchRThreads(),
+  logFile = createLogFile("getMatrixFromProject")
+)
+```
+# Checking something for hussein
+```{r}
+geneList <- c("EBF1", "STAT3", "FOXO1", 
+              "ZEB1", "JUND", "MAX", 
+              "RELB", "NFE2L2", "ATF6",
+              "TGIF2", "NFKB1", "XBP1", "MEF2B", "MEF2A", "TCF12")
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = geneList, 
+    embedding = "UMAP_Harmony",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = NULL
+)
+
+p2 <- lapply(p, function(x){ # insanely specific ggplot adjustments to fit the legend in here properly. jesus christ lol
+    x + 
+    #guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.25, 0.25, 0.25, 0.25), "cm")) + # top, right, bottom, left
+    theme(legend.title = element_text(size = 6),
+          legend.text = element_text(size = 6),
+          legend.key.size = unit(0.45, "cm"), 
+          legend.title.position = "bottom",
+) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        #title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+
+do.call(cowplot::plot_grid, c(list(ncol = 3),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/PseudotimeGenes_GEX_ForHussein.pdf", height = 15, width = 9)
+
+
+# NOW FOR MOTIFS
+
+motifs.fixed <- getFeatures(archR, select = paste(geneList, collapse="|"), useMatrix = "MotifMatrix")
+motifs.fixed <- grep("z:", motifs.fixed, value = TRUE)
+motifs.fixed <- motifs.fixed[-c(6,7,11,18)]
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "MotifMatrix", 
+    name = motifs.fixed, 
+    embedding = "UMAP_Harmony",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$horizonExtra,
+    imputeWeights = getImputeWeights(archR)
+)
+
+p2 <- lapply(p, function(x){ # insanely specific ggplot adjustments to fit the legend in here properly. jesus christ lol
+    x + 
+    #guides(color = FALSE, fill = FALSE) + 
+    #theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0.25, 0.25, 0.25, 0.25), "cm")) + # top, right, bottom, left
+    theme(legend.title = element_text(size = 6),
+          legend.text = element_text(size = 6),
+          legend.key.size = unit(0.45, "cm"), 
+          legend.title.position = "bottom",
+) +
+    theme(
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        #title = element_blank(),
+        axis.title.y = element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 3),p2))
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/PseudotimeGenes_Motif_ForHussein.pdf", height = 15, width = 9)
+```
+Figure 2: MBC-like vs. Reference MBC - GEX VOLCANO PLOT
+```{r}
+# Get DEG
+markerTest <- getMarkerFeatures(
+  ArchRProj = archR, 
+  useMatrix = "GeneIntegrationMatrix",
+  groupBy = "final_annotation",
+  testMethod = "wilcoxon",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  useGroups = "PC-like MBC",
+  bgdGroups = c("Polyclonal MBC")
+)
+
+markerList <- getMarkers(markerTest, cutOff = "FDR < 100")
+df.motifs <- as.data.frame(markerList$`PC-like MBC`)
+df.motifs$log10.fdr <- log10(df.motifs$FDR) * -1
+
+
+# Do it again with lower threshold for better volcano plot
+motifs.up <- df.motifs[df.motifs$Log2FC > 0.25,]
+motifs.do <- df.motifs[df.motifs$Log2FC < (-0.25),]
+sorted.up <- motifs.up[order(motifs.up$FDR),]
+sorted.do <- motifs.do[order(motifs.do$FDR),]
+
+combined.df <- rbind(motifs.up, motifs.do)
+combined.df$category <- NA
+combined.df$category[combined.df$Log2FC > 0.5 & combined.df$FDR < 0.000000005] <- "POS"
+combined.df$category[combined.df$Log2FC < (-0.5) & combined.df$FDR < 0.000000005] <- "NEG"
+mbc.upreg.df <- na.omit(combined.df[combined.df$category == "POS",])
+write.csv(mbc.upreg.df, "/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/PClike_vs_PolyclonalMBC_Upregulated_GEX.csv")
+pc.upreg.df <- na.omit(combined.df[combined.df$category == "NEG",])
+write.csv(pc.upreg.df, "/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/PClike_vs_Polyclonal_Downregulated_GEX.csv")
+
+### now motif
+
+markerTest <- getMarkerFeatures(
+  ArchRProj = archR, 
+  useMatrix = "MotifMatrix",
+  groupBy = "final_annotation",
+  testMethod = "wilcoxon",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  useGroups = "MBC-like MBC",
+  bgdGroups = c("Reference MBC")
+)
+
+# Up in MBC-like
+markerList.motifs <- getMarkers(markerTest, cutOff = "FDR <= 100")
+df.motifs <- as.data.frame(markerList.motifs$`MBC-like MBC`)
+df.motifs$log10.fdr <- log10(df.motifs$FDR) * -1
+
+motifs.up <- df.motifs[df.motifs$MeanDiff > 0,]
+motifs.do <- df.motifs[df.motifs$MeanDiff < -(0),]
+sorted.motifs.up <- motifs.up[order(-motifs.up$log10.fdr),]
+sorted.motifs.do <- motifs.do[order(-motifs.do$log10.fdr),]
+
+combined.df.motifs <- rbind(sorted.motifs.up, sorted.motifs.do)
+combined.df.motifs$category <- NA
+combined.df.motifs$category[combined.df.motifs$MeanDiff > 0.025 & combined.df.motifs$FDR < 0.000000005] <- "POS"
+combined.df.motifs$category[combined.df.motifs$MeanDiff < (-0.025) & combined.df.motifs$FDR < 0.000000005] <- "NEG"
+mbc.upreg.df <- na.omit(combined.df.motifs[combined.df.motifs$category == "POS",])
+write.csv(mbc.upreg.df, "/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/MBClike_vs_PolyclonalMBC_Upregulated_Motif.csv")
+pc.upreg.df <- na.omit(combined.df.motifs[combined.df.motifs$category == "NEG",])
+write.csv(pc.upreg.df, "/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/MBClike_vs_PolyclonalMBC_Downregulated_Motif.csv")
+```
+# PIM genes for Hussein
+```{r}
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "GeneIntegrationMatrix", 
+    name = c("PIM1", "PIM2"), 
+    embedding = "UMAP_Harmony",
+    quantCut = c(0.01, 0.95),
+    pal = ArchRPalettes$solarExtra,
+    imputeWeights = NULL
+)
+
+p$PIM1
+ggsave("/Users/gagled01/morganLab/Waldenstroms/scRNA_ATAC/figures/PIM1_GEX.png", height = 6, width = 6)
+p$PIM2
+ggsave("/Users/gagled01/morganLab/Waldenstroms/scRNA_ATAC/figures/PIM2_GEX.png", height = 6, width = 6)
+
+genes <- c("PIM1", "PIM2")
+
+cols <- ArchRPalettes$paired
+names(cols) <- names(table(archR$final_annotation)) 
+cols[1] <- "mediumseagreen"
+cols[2] <- "mediumpurple"
+cols[3] <- "firebrick3"
+cols[4] <- "orange"
+cols[5] <- "dodgerblue2"
+cols[6] <- "thistle2"
+cols[7] <- "burlywood"
+cols[8] <- "darkmagenta"
+cols[9] <- "darkkhaki"
+cols[10] <- "black"
+
+p <- plotGroups(
+    ArchRProj = archR, 
+    groupBy = "final_annotation", 
+    colorBy = "GeneIntegrationMatrix", 
+    name = genes,
+    plotAs = "violin",
+    alpha = 0.4,
+    addBoxPlot = TRUE,
+    #groupOrder = c("MBC-like MBC", "Intermediate MBC", "PC-like MBC", "Clonal PCs", "Non-clonal MBC", "Reference MBC", "Reference PC", "Reference Naive", "Reference GC"),
+    pal = cols
+   )
+p$PIM1
+ggsave("/Users/gagled01/morganLab/Waldenstroms/scRNA_ATAC/figures/PIM1_GEX_Violins.png", height = 6, width = 6)
+p$PIM2
+ggsave("/Users/gagled01/morganLab/Waldenstroms/scRNA_ATAC/figures/PIM2_GEX_Violins.png", height = 6, width = 6)
+
+```
+
+```{r}
+table(archR$final_annotation[archR$samplesClean == "BCP005"])
+```
+

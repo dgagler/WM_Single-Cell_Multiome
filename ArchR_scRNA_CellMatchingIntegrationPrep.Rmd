@@ -1,0 +1,143 @@
+---
+title: "ArchR_scRNA_Reintegration"
+output: html_document
+date: "2024-04-17"
+---
+
+```{r}
+library(ArchR)
+library(Seurat)
+addArchRThreads(threads = 1)
+addArchRGenome("hg38")
+options(future.globals.maxSize=100000000000000000) 
+```
+
+```{r}
+archR <- loadArchRProject(path = "/Users/gagled01/morganLab/Waldenstroms/singlecell/data/ATAC_fragments/WM_DeviationsAdded")
+
+archR$tripartite_annotation <- archR$annotation3
+archR$tripartite_annotation[archR$samplesClean == "WM43"] <- "Intermediate MBC"
+archR$tripartite_annotation[archR$annotation1 == "C5 - WM54 Secondary Clone"] <- "MBC-like MBC"
+archR$tripartite_annotation[archR$annotation3 == "MBC-like MBC" & archR$samplesClean == "04-006"] <- "PC-like MBC"
+archR$tripartite_annotation[archR$annotation3 == "MBC-like MBC" & archR$samplesClean == "01-115"] <- "PC-like MBC"
+archR$tripartite_annotation[archR$annotation3 == "PC-like MBC" & archR$samplesClean == "01-190"] <- "MBC-like MBC"
+archR$tripartite_annotation[archR$annotation3 == "PC-like MBC" & archR$samplesClean == "WM25"] <- "Intermediate MBC"
+archR$tripartite_annotation[archR$annotation1 == "C2 - Clonal MBC" & archR$samplesClean == "WM54"] <- "Intermediate MBC"
+
+
+archR$annotation2 <- archR$annotation1
+archR$annotation2[archR$annotation1 == "C3 - Non-clonal PC"] <- "C1 - Clonal PCs"
+archR$annotation2[archR$annotation1 == "C5 - WM54 Secondary Clone"] <- "C2 - Clonal MBC"
+archR$annotation2[archR$annotation1 == "C6 - Clonal MBC Minor Cluster 1"] <- "C2 - Clonal MBC"
+archR$annotation2[archR$annotation1 == "C7 - Clonal MBC Minor Cluster 2"] <- "C2 - Clonal MBC"
+archR$annotation2[archR$annotation2 == "C1 - Clonal PCs"] <- "Clonal PCs"
+archR$annotation2[archR$annotation1 == "C10 - HD Memory B cells"] <- "Reference MBC"
+archR$annotation2[archR$annotation1 == "C11 - HD Plasma cells"] <- "Reference PC"
+archR$annotation2[archR$annotation2 == "C2 - Clonal MBC"] <- "Clonal MBC"
+archR$annotation2[archR$annotation1 == "C4 - Non-clonal MBC"] <- "Non-clonal MBC"
+archR$annotation2[archR$annotation1 == "C8 - HD GC B cells"] <- "Reference GC"
+archR$annotation2[archR$annotation1 == "C9 - HD Naive B cells"] <- "Reference Naive"
+table(archR$annotation2)
+
+archR$annotation3 <- archR$annotation2
+archR$annotation3[archR$annotation2 == "Clonal MBC" & archR$hasPC == "+"] <- "PC-like MBC"
+archR$annotation3[archR$annotation2 == "Clonal MBC" & archR$hasPC == "-"] <- "MBC-like MBC"
+archR$annotation3[archR$annotation3 == "Clonal MBC"] <- "PC-like MBC"
+table(archR$annotation3)
+
+archR$annotation4 <- archR$annotation2
+archR$annotation4[archR$hasPC == "+"] <- "PC-like"
+archR$annotation4[archR$hasPC == "-"] <- "MBC-like"
+archR$annotation4[archR$condition == "HD"] <- "Reference"
+
+archR$subtype <- archR$hasPC 
+archR$subtype[archR$hasPC == "+"] <- "PC-like"
+archR$subtype[archR$hasPC == "-"] <- "MBC-like"
+table(archR$subtype)
+
+archR$annotation5 <- archR$annotation1
+archR$annotation5[archR$annotation1 == "C3 - Non-clonal PC"] <- "Clonal PCs"
+archR$annotation5[archR$annotation1 == "C5 - WM54 Secondary Clone"] <- "Clonal MBC"
+archR$annotation5[archR$annotation1 == "C6 - Clonal MBC Minor Cluster 1"] <- "Clonal MBC"
+archR$annotation5[archR$annotation1 == "C7 - Clonal MBC Minor Cluster 2"] <- "Clonal MBC"
+archR$annotation5[archR$annotation5 == "C1 - Clonal PCs"] <- "Clonal PC"
+archR$annotation5[archR$annotation1 == "C10 - HD Memory B cells"] <- "Reference MBC"
+archR$annotation5[archR$annotation1 == "C11 - HD Plasma cells"] <- "Reference PC"
+archR$annotation5[archR$annotation5 == "C2 - Clonal MBC"] <- "Clonal MBC"
+archR$annotation5[archR$annotation1 == "C4 - Non-clonal MBC"] <- "Non-clonal MBC"
+archR$annotation5[archR$annotation1 == "C8 - HD GC B cells"] <- "Reference GC"
+archR$annotation5[archR$annotation1 == "C9 - HD Naive B cells"] <- "Reference Naive"
+table(archR$annotation5)
+```
+
+```{r}
+# Load RNA
+library(Seurat)
+scrna <- readRDS("/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/scRNA_SCTransformIntegrated_CTAnnotated_ReferenceAdd_Filtered_NoRegress.rds")
+Idents(scrna) <- "patient"
+scrna.sub <- subset(scrna, idents = c("01-076", "01-115", "01-131", "01-163", "01-190",
+                                           "WM25", "WM43", "WM46", "WM47", "WM54", "WM65",
+                                      "tonsil1", "tonsil2", "tonsil3"))
+rm(scrna)
+
+# Reclustering based on integrated assay (which is effectively batch corrected)
+DefaultAssay(scrna.sub) <- "integrated"
+scrna.sub <- ScaleData(scrna.sub)
+scrna.sub <- RunPCA(scrna.sub, npcs = 20)
+scrna.sub <- FindNeighbors(scrna.sub, dims = 1:20)
+scrna.sub <- FindClusters(scrna.sub, resolution = 0.5)
+scrna.sub <- RunUMAP(scrna.sub, dims = 1:20)
+```
+
+```{r}
+archR.cells <- archR$cellNames
+seurat.cells <- colnames(scrna.sub)
+
+length(intersect(archR.cells, seurat.cells))
+
+fixed.seurat.cells <- paste0(scrna.sub@meta.data$patient, "_atac_fragments.tsv.gz#",colnames(scrna.sub))
+fixed.seurat.cells2 <- gsub("_1", "", fixed.seurat.cells)
+fixed.seurat.cells3 <- gsub("#01-076-", "#", fixed.seurat.cells2)
+fixed.seurat.cells4 <- gsub("#01-115-", "#", fixed.seurat.cells3)
+fixed.seurat.cells5 <- gsub("#01-131-", "#", fixed.seurat.cells4)
+fixed.seurat.cells6 <- gsub("#01-163-", "#", fixed.seurat.cells5)
+fixed.seurat.cells7 <- gsub("#01-190-", "#", fixed.seurat.cells6)
+fixed.seurat.cells8 <- gsub("#04-003-", "#", fixed.seurat.cells7)
+fixed.seurat.cells9 <- gsub("#04-006-", "#", fixed.seurat.cells8)
+fixed.seurat.cells10 <- gsub("#WM25-", "#", fixed.seurat.cells9)
+fixed.seurat.cells11 <- gsub("#WM43-", "#", fixed.seurat.cells10)
+fixed.seurat.cells12 <- gsub("#WM46-", "#", fixed.seurat.cells11)
+fixed.seurat.cells13 <- gsub("#WM47-", "#", fixed.seurat.cells12)
+fixed.seurat.cells14 <- gsub("#WM54-", "#", fixed.seurat.cells13)
+fixed.seurat.cells15 <- gsub("#WM65-", "#", fixed.seurat.cells14)
+
+length(intersect(fixed.seurat.cells15, archR.cells))
+tail(setdiff(fixed.seurat.cells15, archR.cells))
+
+test_fixed_cells <- grep("tonsil1", fixed.seurat.cells15, value = TRUE)
+test_broken_cells <- grep("stanford", archR.cells, value = TRUE)
+
+head(test_fixed_cells)
+head(test_broken_cells)
+
+intersect(p04_003_srat_cells, p04_003_archr_cells)
+
+ref.test.cells <- archR$cellNames[archR$samplesClean == "stanford_1"]
+ref.test.archr <- archR[ref.test.cells,]
+ref.test.archr.cells <- ref.test.archr$cellNames
+head(ref.test.archr.cells)
+
+ref.test.seurat <- subset(scrna.sub, subset = patient == "tonsil1")
+test.cells.seurat <- paste0("tonsil_1a", "_fragments.tsv.bgz#",colnames(ref.test.seurat))
+test.cells.seurat2 <- gsub("-1_1", "-1", test.cells.seurat)
+head(test.cells.seurat2)
+
+head(ref.test.archr.cells, n = 25)
+head(test.cells.seurat2, n = 25)
+
+intersect(test.cells.seurat2, ref.test.archr.cells)
+
+```
+
+
+

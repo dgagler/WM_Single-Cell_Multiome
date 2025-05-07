@@ -1,0 +1,211 @@
+---
+title: "PeakAnalysis"
+output: html_document
+date: "2024-01-31"
+---
+
+```{r}
+library(ArchR)
+library(Seurat)
+addArchRThreads(threads = 1)
+addArchRGenome("hg38")
+options(future.globals.maxSize=100000000000000000000000) 
+```
+Load existing ArchR project
+```{r}
+archR <- loadArchRProject(path = "/Users/gagled01/morganLab/Waldenstroms/singlecell/data/ATAC_fragments/ArchR_2024_NoProgens")
+```
+Create good annotations
+```{r}
+archR$annotation1 <- archR$predictedGroup_Un
+
+archR$annotation1[archR$predictedGroup_Un == "Plasma cells"] <- "C1 - Clonal PCs"
+archR$annotation1[archR$BLin_NoProgen_Clusters == "C15"] <- "C1 - Clonal PCs"
+archR$annotation1[archR$samplesClean != "01-190" & archR$BLin_NoProgen_Clusters == "C14"] <- "C3 - Non-clonal PC"
+
+archR$annotation1[archR$predictedGroup_Un != "Plasma cells" & archR$BLin_NoProgen_Clusters == "C10"] <- "C2 - Clonal MBC"
+archR$annotation1[archR$predictedGroup_Un != "Plasma cells" & archR$BLin_NoProgen_Clusters == "C11"] <- "C2 - Clonal MBC"
+archR$annotation1[archR$predictedGroup_Un != "Plasma cells" & archR$BLin_NoProgen_Clusters == "C12"] <- "C2 - Clonal MBC"
+archR$annotation1[archR$predictedGroup_Un != "Plasma cells" & archR$BLin_NoProgen_Clusters == "C13"] <- "C2 - Clonal MBC"
+archR$annotation1[archR$predictedGroup_Un != "Plasma cells" & archR$BLin_NoProgen_Clusters == "C16"] <- "C2 - Clonal MBC"
+archR$annotation1[archR$predictedGroup_Un != "Plasma cells" & archR$BLin_NoProgen_Clusters == "C17"] <- "C2 - Clonal MBC"
+archR$annotation1[archR$predictedGroup_Un != "Plasma cells" & archR$BLin_NoProgen_Clusters == "C18"] <- "C2 - Clonal MBC"
+archR$annotation1[archR$predictedGroup_Un != "Plasma cells" & archR$BLin_NoProgen_Clusters == "C19"] <- "C2 - Clonal MBC"
+archR$annotation1[archR$predictedGroup_Un != "Plasma cells" & archR$BLin_NoProgen_Clusters == "C20"] <- "C2 - Clonal MBC"
+archR$annotation1[archR$predictedGroup_Un != "Plasma cells" & archR$BLin_NoProgen_Clusters == "C22"] <- "C2 - Clonal MBC"
+
+archR$annotation1[archR$predictedGroup_Un != "Plasma cells" & archR$BLin_NoProgen_Clusters == "C24"] <- "C4 - Non-clonal MBC"
+
+archR$annotation1[archR$predictedGroup_Un != "Plasma cells" & archR$BLin_NoProgen_Clusters == "C21"] <- "C5 - WM54 Secondary Clone"
+archR$annotation1[archR$predictedGroup_Un != "Plasma cells" & archR$BLin_NoProgen_Clusters == "C23"] <- "C6 - Clonal MBC Minor Cluster 1"
+archR$annotation1[archR$predictedGroup_Un != "Plasma cells" & archR$BLin_NoProgen_Clusters == "C25"] <- "C7 - Clonal MBC Minor Cluster 2"
+
+archR$annotation1[archR$predictedGroup_Un %in% c("Large pre-B cells", "Small pre-B cells", "Pro-B cells", "Proliferative germinal center B cells")] <- "C2 - Clonal MBC"
+
+archR$annotation1[archR$condition == "HD" & archR$predictedGroup_Un == "Germinal center B cells"] <- "C8 - HD GC B cells"
+archR$annotation1[archR$condition == "HD" & archR$predictedGroup_Un == "Naive B cells"] <- "C9 - HD Naive B cells"
+archR$annotation1[archR$condition == "HD" & archR$predictedGroup_Un == "Memory B cells"] <- "C10 - HD Memory B cells"
+archR$annotation1[archR$condition == "HD" & archR$predictedGroup_Un == "Plasma cells"] <- "C11 - HD Plasma cells"
+
+archR$annotation1[archR$annotation1 == "Memory B cells"] <- "C2 - Clonal MBC"
+
+```
+
+```{r}
+markersPeaks <- getMarkerFeatures(
+    ArchRProj = archR, 
+    useMatrix = "PeakMatrix", 
+    groupBy = "annotation1",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  testMethod = "wilcoxon"
+)
+```
+# Visualize Marker Peaks via heatmap
+```{r}
+heatmapPeaks <- plotMarkerHeatmap(
+  seMarker = markersPeaks, 
+  cutOff = "FDR <= 0.1 & Log2FC >= 0.5",
+  transpose = TRUE
+)
+
+draw(heatmapPeaks, heatmap_legend_side = "bot", annotation_legend_side = "bot")
+
+plotPDF(heatmapPeaks, name = "Peak-Marker-Heatmap", width = 8, height = 6, ArchRProj = archR, addDOC = FALSE)
+```
+Add motif annotations
+```{r}
+archR <- addMotifAnnotations(ArchRProj = archR, motifSet = "cisbp", name = "Motif")
+```
+Illegal malignant only subset
+```{r}
+cellsSample <- archR$cellNames[archR$condition %in% "WM"]
+illegal.archR.malignants <- archR[cellsSample, ]
+```
+Nonillegal subset of malignants
+```{r}
+idsKeep <- as.character(archR$cellNames[(archR$condition == "WM")])
+archR.malignant <- archR[archR$cellNames %in% idsKeep]
+
+archR.sub <- subsetArchRProject(ArchRProj = archR,
+                   cells = idsKeep,
+                   outputDirectory = "ArchR_PeaksAdded_Malignants",
+                   dropCells = TRUE,
+                   threads = getArchRThreads(),
+                   force = TRUE
+)
+```
+Pairwise Motif Comparison
+```{r}
+markerTest <- getMarkerFeatures(
+  ArchRProj = illegal.archR.malignants, 
+  useMatrix = "PeakMatrix",
+  groupBy = "hasPC",
+  testMethod = "wilcoxon",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  useGroups = "+",
+  bgdGroups = "-"
+)
+
+motifsUp <- peakAnnoEnrichment(
+    seMarker = markerTest,
+    ArchRProj = illegal.archR.malignants,
+    peakAnnotation = "Motif",
+    cutOff = "FDR <= 0.1 & Log2FC >= 0.5"
+  )
+
+df.up <- data.frame(TF = rownames(motifsUp), mlog10Padj = assay(motifsUp)[,1])
+df.up <- df.up[order(df.up$mlog10Padj, decreasing = TRUE),]
+df.up$rank <- seq_len(nrow(df.up))
+head(df.up)
+
+ggUp <- ggplot(df.up, aes(rank, mlog10Padj, color = mlog10Padj)) + 
+  geom_point(size = 1) +
+  ggrepel::geom_label_repel(
+        data = df.up[rev(seq_len(20)), ], aes(x = rank, y = mlog10Padj, label = TF), 
+        size = 1.5,
+        nudge_x = 2,
+        color = "black",
+        max.overlaps = 15
+  ) + theme_ArchR() + 
+  ylab("-log10(P-adj) Motif Enrichment") + 
+  xlab("Rank Sorted TFs Enriched") +
+  scale_color_gradientn(colors = paletteContinuous(set = "comet"))
+
+# Upregulated in 2nd comparison group
+motifsDo <- peakAnnoEnrichment(
+    seMarker = markerTest,
+    ArchRProj = illegal.archR.malignants,
+    peakAnnotation = "Motif",
+    cutOff = "FDR <= 0.1 & Log2FC <= -0.5"
+  )
+
+df.do <- data.frame(TF = rownames(motifsDo), mlog10Padj = assay(motifsDo)[,1])
+df.do <- df.do[order(df.do$mlog10Padj, decreasing = TRUE),]
+df.do$rank <- seq_len(nrow(df.do))
+head(df.do)
+
+ggDo <- ggplot(df.do, aes(rank, mlog10Padj, color = mlog10Padj)) + 
+  geom_point(size = 1) +
+  ggrepel::geom_label_repel(
+        data = df.do[rev(seq_len(20)), ], aes(x = rank, y = mlog10Padj, label = TF), 
+        size = 1.5,
+        nudge_x = 2,
+        color = "black",
+        max.overlaps = 15
+  ) + theme_ArchR() + 
+  ylab("-log10(FDR) Motif Enrichment") +
+  xlab("Rank Sorted TFs Enriched") +
+  scale_color_gradientn(colors = paletteContinuous(set = "comet"))
+
+ggUp
+ggDo
+
+head(df.up, n = 20)
+head(df.do, n = 20)
+
+plotPDF(ggUp, ggDo, name = "MalignantOnlySubset_HasPC-vs-NoPC-Motifs-Enriched", width = 5, height = 5, ArchRProj = illegal.archR.malignants, addDOC = FALSE)
+```
+
+Marker Tracks
+```{r}
+p <- plotBrowserTrack(
+    ArchRProj = projHeme5, 
+    groupBy = "Clusters2", 
+    geneSymbol = c("GATA1"),
+    features =  getMarkers(markersPeaks, cutOff = "FDR <= 0.1 & Log2FC >= 1", returnGR = TRUE)["Erythroid"],
+    upstream = 50000,
+    downstream = 50000
+    
+grid::grid.newpage()
+grid::grid.draw(p$GATA1)
+
+plotPDF(p, name = "Plot-Tracks-With-Features", width = 5, height = 5, ArchRProj = projHeme5, addDOC = FALSE)
+```
+Add motifs
+```{r}
+library("BSgenome.Hsapiens.UCSC.hg38")
+archR <- addMotifAnnotations(ArchRProj = archR, motifSet = "cisbp", name = "Motif")
+archR <- addArchRAnnotations(ArchRProj = archR, collection = "EncodeTFBS")
+```
+
+Add chomvar Deviations
+```{r}
+archR <- addMotifAnnotations(ArchRProj = archR, motifSet = "cisbp", name = "Motif")
+
+archR <- addBgdPeaks(archR)
+
+archR <- addDeviationsMatrix(
+  ArchRProj = archR, 
+  peakAnnotation = "Motif",
+  force = TRUE
+)
+```
+Save it out
+```{r}
+saveArchRProject(ArchRProj = archR, outputDirectory = "WM_2024_NoProgens_Annotated", load = FALSE)
+```
+
+```{r}
+archR <- getVarDeviations(archR, name = "MotifMatrix", plot = TRUE)
+```
+

@@ -1,0 +1,308 @@
+---
+title: "WM_Monocle3_Trajectory"
+output: html_document
+date: "2024-04-23"
+---
+################################################################################
+Code for trajectory analysis with Monocle3 based on https://cole-trapnell-lab.github.io/monocle3/docs/introduction/Involves computing trajectories and pseudotime for WM cells.
+################################################################################
+
+# Load libraries
+```{r}
+library(Seurat)
+library(monocle3)
+library(monocle)
+library(ggplot2)
+library(SeuratWrappers)
+
+options(future.globals.maxSize=10000000000000000000) # Set max global size so we don't run out of memory
+```
+Load data
+```{r}
+scrna <- readRDS("/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/scRNA_SCTransformIntegrated_CTAnnotated_ReferenceAdd_Filtered_NoRegress.rds")
+Idents(scrna) <- "patient"
+scrna <- subset(scrna, idents = c("01-076", "01-115", "01-131", "01-163", "01-190",
+                                           "WM25", "WM43", "WM46", "WM47", "WM54", "WM65"))
+
+#scrna.sub <- subset(scrna, idents = c("01-190"))
+
+#rm(scrna)
+
+# Reclustering based on integrated assay (which is effectively batch corrected)
+DefaultAssay(scrna) <- "integrated"
+scrna <- ScaleData(scrna)
+scrna <- RunPCA(scrna, npcs = 20)
+scrna <- FindNeighbors(scrna, dims = 1:20)
+scrna <- FindClusters(scrna, resolution = 0.5)
+scrna <- RunUMAP(scrna, dims = 1:20)
+DefaultAssay(scrna) <- "RNA"
+```
+TRUST4 setup
+```{r}
+# Assumes that the allbarcodes df has been created and that everything has been loaded in separate "Second_TRUST4_AnnotationAttempt.Rmd" file
+# Fix cells for TRUST4 by patient
+#scrna@meta.data$cells_clean_trust4 <- gsub("01-076-", "", colnames(scrna))
+#scrna@meta.data$cells_clean_trust4 <- gsub("01-115-", "", scrna@meta.data$cells_clean_trust4)
+#scrna@meta.data$cells_clean_trust4 <- gsub("01-131-", "", scrna@meta.data$cells_clean_trust4)
+#scrna@meta.data$cells_clean_trust4 <- gsub("01-163-", "", scrna@meta.data$cells_clean_trust4)
+#scrna@meta.data$cells_clean_trust4 <- gsub("01-190-", "", scrna@meta.data$cells_clean_trust4)
+#scrna@meta.data$cells_clean_trust4 <- gsub("04-003-", "", scrna@meta.data$cells_clean_trust4)
+#scrna@meta.data$cells_clean_trust4 <- gsub("04-006-", "", scrna@meta.data$cells_clean_trust4)
+#scrna@meta.data$cells_clean_trust4 <- gsub("WM25-", "", scrna@meta.data$cells_clean_trust4)
+#scrna@meta.data$cells_clean_trust4 <- gsub("WM43-", "", scrna@meta.data$cells_clean_trust4)
+#scrna@meta.data$cells_clean_trust4 <- gsub("WM46-", "", scrna@meta.data$cells_clean_trust4)
+#scrna@meta.data$cells_clean_trust4 <- gsub("WM47-", "", scrna@meta.data$cells_clean_trust4)
+#scrna@meta.data$cells_clean_trust4 <- gsub("WM54-", "", scrna@meta.data$cells_clean_trust4)
+#scrna@meta.data$cells_clean_trust4 <- gsub("WM65-", "", scrna@meta.data$cells_clean_trust4)
+scrna@meta.data$cells_clean_trust4 <- gsub("-1$", "", colnames(scrna))
+
+# Create cols
+scrna@meta.data$topCDR3s <- NA
+scrna@meta.data$hasTopCDR3 <- "No"
+
+double_clean_barcodes <- gsub("_", "-", all_barcodes$patient_barcode_clean)
+all_barcodes$patient_barcode_clean2 <- double_clean_barcodes
+
+p01_076.cells.with <- all_barcodes$patient_barcode_clean2[all_barcodes$junction_aa == "CQQFDSSWTF"]
+p01_115.cells.with <- all_barcodes$patient_barcode_clean2[all_barcodes$junction_aa == "CLQRGNWPLTF"]
+p01_131.cells.with <- all_barcodes$patient_barcode_clean2[all_barcodes$junction_aa == "CQQYYSIPTF"]
+p01_163.cells.with <- all_barcodes$patient_barcode_clean2[all_barcodes$junction_aa == "CQQYNNWPPLTF"]
+p01_190.cells.with <- all_barcodes$patient_barcode_clean2[all_barcodes$junction_aa == "CQQYNNWPITF"]
+p04_003.cells.with <- all_barcodes$patient_barcode_clean2[all_barcodes$junction_aa == "CQQYDSYPYTF"]
+p04_006.cells.with <- all_barcodes$patient_barcode_clean2[all_barcodes$junction_aa == "CQQYGTSSLTF"]
+wm25.cells.with <- all_barcodes$patient_barcode_clean2[all_barcodes$junction_aa == "CMQALQTPRTF"]
+wm43.cells.with <- all_barcodes$patient_barcode_clean2[all_barcodes$junction_aa == "CQQYNTYPWTF"]
+wm46.cells.with <- all_barcodes$patient_barcode_clean2[all_barcodes$junction_aa == "CQQYNNWPRTF"]
+wm47.cells.with <- all_barcodes$patient_barcode_clean2[all_barcodes$junction_aa == "CQQYGSSSSYTF"]
+wm54.cells.with <- all_barcodes$patient_barcode_clean2[all_barcodes$junction_aa == "CQQCGDWPLTF"]
+wm65.cells.with <- all_barcodes$patient_barcode_clean2[all_barcodes$junction_aa == "CQQYNSYPYTF"]
+
+# Testing
+Idents(scrna) <- "patient"
+p01_190_seurat <- subset(scrna, idents = "01-190")
+length(intersect(p01_190.cells.with, p01_190_seurat@meta.data$cells_clean_trust4))
+
+cdr3.aas <- c("CQQFDSSWTF", "CLQRGNWPLTF", "CQQYYSIPTF", "CQQYNNWPPLTF", "CQQYNNWPITF", "CQQYDSYPYTF",
+              "CQQYGTSSLTF", "CMQALQTPRTF", "CQQYNTYPWTF", "CQQYNNWPRTF", "CQQYGSSSSYTF", "CQQCGDWPLTF", "CQQYNSYPYTF") # make sure to change this for each patient
+
+
+# Do translation
+all.cells.with <- c(p01_076.cells.with, p01_115.cells.with, p01_131.cells.with, p01_163.cells.with, p01_190.cells.with, p04_003.cells.with, p04_006.cells.with,
+                wm25.cells.with, wm43.cells.with, wm46.cells.with, wm47.cells.with, wm54.cells.with, wm65.cells.with)
+length(intersect(all.cells.with, scrna@meta.data$cells_clean_trust4))
+
+#scrna@meta.data$topCDR3s[colnames(scrna) %in% p04_003.cells.with] <- "CQQYDSYPYTF"
+#scrna@meta.data$topCDR3s[scrna@meta.data$cells_clean_trust4 %in% p04_003.cells.with] <- "CQQYDSYPYTF"
+scrna@meta.data$hasTopCDR3[scrna@meta.data$cells_clean_trust4 %in% all.cells.with] <- "Yes"
+
+# Check it worked
+#table(scrna@meta.data$topCDR3s)
+table(scrna@meta.data$hasTopCDR3)
+
+DimPlot(scrna, group.by = "hasTopCDR3")
+```
+Convert Seurat to monocle object
+```{r}
+cds <- as.cell_data_set(scrna)
+#cds <- monocle::clusterCells(cds)
+cds <- estimate_size_factors(cds)
+
+#Check partitions
+#plot_cells(cds, show_trajectory_graph = FALSE, color_cells_by = "partition")
+
+# Assign partitions
+recreate.partitions <- c(rep(1, length(cds@colData@rownames)))
+names(recreate.partitions) <- cds@colData@rownames
+recreate.partitions <- as.factor(recreate.partitions)
+
+cds@clusters@listData[["UMAP"]][["partitions"]] <- recreate.partitions
+
+# Assign cluster info
+Idents(scrna) <- "majority_voting"
+list.cluster <- scrna@active.ident
+cds@clusters@listData[["UMAP"]][["clusters"]] <- list.cluster
+
+# Assign UMAP coords
+cds@int_colData@listData[["reducedDims"]]@listData[["UMAP"]] <- scrna@reductions$umap@cell.embeddings
+
+# Learn trajectory
+cds <- learn_graph(cds, use_partition = T)
+```
+
+Plot with trajectory + pseudotime
+```{r}
+plot_cells(cds, color_cells_by = "cluster", label_groups_by_cluster = F,
+           label_branch_points = T, label_roots = T, label_leaves = F, label_cell_groups = F,
+           group_label_size = 5) + NoLegend() #+ facet_grid(. ~ case.control)
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure1/WM_MonocleTrajectory_scRNA_TrajectoryUMAP.pdf", height = 6, width = 6)
+
+plot_cells(cds, color_cells_by = "patient", label_groups_by_cluster = F,
+           label_branch_points = T, label_roots = T, label_leaves = F, label_cell_groups = F,
+           group_label_size = 5) + NoLegend() #+ facet_grid(. ~ case.control)
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure1/WM_MonocleTrajectory_scRNA_TrajectoryUMAP_Patient.pdf", height = 6, width = 6)
+
+plot_cells(cds, color_cells_by = "hasTopCDR3", label_groups_by_cluster = F,
+           label_branch_points = T, label_roots = T, label_leaves = F, label_cell_groups = F,
+           group_label_size = 5) + NoLegend() #+ facet_grid(. ~ case.control)
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure1/WM_MonocleTrajectory_scRNA_TrajectoryUMAP_byTRUST4.pdf", height = 6, width = 6)
+
+cds <- order_cells(cds, reduction_method = "UMAP", root_cells = colnames(cds[, clusters(cds) == "Pro-B cells"]))
+plot_cells(cds, color_cells_by = "pseudotime", label_groups_by_cluster = F,
+           label_branch_points = F, label_roots = F, label_leaves = F) + NoLegend()#+ facet_grid(. ~ condition) 
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure1/WM_MonocleTrajectory_scRNA_PseudotimeUMAP.pdf", height = 6, width = 6)
+```
+Compute pseudotime. Can do either by selecting an entire cluster or by manually selecting nodes. Did it by assigning cluster 1 for MSCOLCs and BMECs
+```{r}
+#cds <- order_cells(cds)
+cds <- order_cells(cds, reduction_method = "UMAP", root_cells = colnames(cds[, clusters(cds) == "Pro-B cells"]))
+plot_cells(cds, color_cells_by = "pseudotime", label_groups_by_cluster = F,
+           label_branch_points = F, label_roots = F, label_leaves = F) #+ NoLegend()#+ facet_grid(. ~ condition) 
+#ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/WM_MonocleTrajectory_scRNA_PC-like_plusReferences_PseudotimeUMAP.png", height = 6, width = 6)
+
+```
+z
+```{r}
+DimPlot(scrna.sub, raster = F, group.by = "majority_voting") + NoLegend()
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/scRNA_SCTransformInt_CTAnnotationUMAP_Filtered_PatientsOnly_Reclustered_NoRegress_Celltype_Integrated-Assay.png", height = 6, width = 6)
+DimPlot(scrna.sub, raster = F, group.by = "patient") + NoLegend()
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/scRNA_SCTransformInt_CTAnnotationUMAP_Filtered_PatientsOnly_Reclustered_NoRegress_Patient_Integrated-Assay.png", height = 6, width = 6)
+
+```
+
+Genes as a function of pseudotime?
+```{r}
+ciliated_cds_pr_test_res <- graph_test(cds, neighbor_graph="principal_graph", cores=4)
+pr_deg_ids <- row.names(subset(ciliated_cds_pr_test_res, q_value < 0.05))
+
+ciliated_cds_pr_test_res[order(ciliated_cds_pr_test_res$p_value, -ciliated_cds_pr_test_res$morans_I),]
+
+# NEED TO DO THIS FOR STUFF TO WORK
+rowData(cds)$gene_name <- rownames(cds)
+rowData(cds)$gene_short_name <- rowData(cds)$gene_name
+
+genes <- c("PELI1", "MSI2", "AFF3", "SOX4", "MKI67", "IGKC", "NRG1",
+           "PLCB1", "IGHM", "IKZF2", "JCHAIN")
+
+plot_cells(cds, genes=genes,
+           show_trajectory_graph=FALSE,
+           label_cell_groups=FALSE,
+           label_leaves=FALSE)
+```
+
+```{r}
+cds_subset <- choose_cells(cds)
+subset_pr_test_res <- graph_test(cds_subset, neighbor_graph="principal_graph", cores=4)
+#pr_deg_ids <- row.names(subset(subset_pr_test_res, q_value < 0.05))
+subset_pr_test_res[order(subset_pr_test_res$p_value, -subset_pr_test_res$morans_I),]
+
+```
+
+```{r}
+cds_subset2 <- choose_cells(cds)
+subset_pr_test_res2 <- graph_test(cds_subset2, neighbor_graph="principal_graph", cores=4)
+subset_pr_test_res2[order(subset_pr_test_res2$p_value, -subset_pr_test_res2$morans_I),]
+```
+```{r}
+genes <- c("MZB1", "IGKC", "IGHM", "JCHAIN", "SDK1", "PRDM1", "CD74", "SLAMF7", "CD79B", "BANK1",
+           "PLCG2", "CD79A", "TMSB4X", "SOX5", "CADM1", "AFF3", "EIF2AK3", "BCL2", "MSI2", "PELI1")
+
+plot_cells(cds, genes=genes,
+           show_trajectory_graph=FALSE,
+           label_cell_groups=FALSE,
+           label_leaves=FALSE)
+```
+
+# Add TRUST4 info
+```{r}
+# Fix cells for TRUST4 by patient
+scrna.sub@meta.data$cells_clean_trust4 <- gsub("04-003-", "", colnames(scrna.sub))
+intersect(p04_003_barcodes$cell_id, scrna.cells)
+
+# Create cols
+scrna.sub@meta.data$topCDR3s <- NA
+scrna.sub@meta.data$hasTopCDR3 <- "No"
+
+# Do translation
+p04_003.cells.with <- all_barcodes$cell_id[all_barcodes$junction_aa == "CQQYDSYPYTF"]
+length(intersect(p04_003.cells.with, scrna.sub@meta.data$cells_clean_trust4))
+scrna.sub@meta.data$topCDR3s[scrna.sub@meta.data$cells_clean_trust4 %in% p04_003.cells.with] <- "CQQYDSYPYTF"
+scrna.sub@meta.data$hasTopCDR3[scrna.sub@meta.data$cells_clean_trust4 %in% p04_003.cells.with] <- "Yes"
+
+# Check it worked
+table(scrna.sub@meta.data$topCDR3s)
+table(scrna.sub@meta.data$hasTopCDR3)
+
+
+wm$data[[5]]
+p01_190.cells.with <- all_barcodes$patient_barcode_clean[all_barcodes$junction_aa == "CQQYNNWPITF"]
+length(intersect(p01_190.cells.with, scrna@meta.data$patient_barcode_clean))
+scrna@meta.data$topCDR3s[scrna@meta.data$patient_barcode_clean %in% p01_190.cells.with] <- "CQQYNNWPITF"
+scrna@meta.data$hasTopCDR3[scrna@meta.data$patient_barcode_clean %in% p01_190.cells.with] <- "Yes"
+table(scrna@meta.data$topCDR3s)
+table(scrna@meta.data$hasTopCDR3)
+
+wm$data[[6]]
+p04_003.cells.with <- all_barcodes$patient_barcode_clean[all_barcodes$junction_aa == "CQQYDSYPYTF"]
+length(intersect(p04_003.cells.with, scrna@meta.data$patient_barcode_clean))
+scrna@meta.data$topCDR3s[scrna@meta.data$patient_barcode_clean %in% p04_003.cells.with] <- "CQQYDSYPYTF"
+scrna@meta.data$hasTopCDR3[scrna@meta.data$patient_barcode_clean %in% p04_003.cells.with] <- "Yes"
+table(scrna@meta.data$topCDR3s)
+table(scrna@meta.data$hasTopCDR3)
+
+wm$data[[7]]
+p04_006.cells.with <- all_barcodes$patient_barcode_clean[all_barcodes$junction_aa == "CQQYGTSSLTF"]
+length(intersect(p04_006.cells.with, scrna@meta.data$patient_barcode_clean))
+scrna@meta.data$topCDR3s[scrna@meta.data$patient_barcode_clean %in% p04_006.cells.with] <- "CQQYGTSSLTF"
+scrna@meta.data$hasTopCDR3[scrna@meta.data$patient_barcode_clean %in% p04_006.cells.with] <- "Yes"
+table(scrna@meta.data$topCDR3s)
+table(scrna@meta.data$hasTopCDR3)
+
+wm$data[[8]]
+wm25.cells.with <- all_barcodes$patient_barcode_clean[all_barcodes$junction_aa == "CMQALQTPRTF"]
+length(intersect(wm25.cells.with, scrna@meta.data$patient_barcode_clean))
+scrna@meta.data$topCDR3s[scrna@meta.data$patient_barcode_clean %in% wm25.cells.with] <- "CMQALQTPRTF"
+scrna@meta.data$hasTopCDR3[scrna@meta.data$patient_barcode_clean %in% wm25.cells.with] <- "Yes"
+table(scrna@meta.data$topCDR3s)
+table(scrna@meta.data$hasTopCDR3)
+
+wm$data[[9]]
+wm43.cells.with <- all_barcodes$patient_barcode_clean[all_barcodes$junction_aa == "CQQYNTYPWTF"]
+length(intersect(wm43.cells.with, scrna@meta.data$patient_barcode_clean))
+scrna@meta.data$topCDR3s[scrna@meta.data$patient_barcode_clean %in% wm43.cells.with] <- "CQQYNTYPWTF"
+scrna@meta.data$hasTopCDR3[scrna@meta.data$patient_barcode_clean %in% wm43.cells.with] <- "Yes"
+table(scrna@meta.data$topCDR3s)
+table(scrna@meta.data$hasTopCDR3)
+
+wm$data[[10]]
+wm46.cells.with <- all_barcodes$patient_barcode_clean[all_barcodes$junction_aa == "CQQYNNWPRTF"]
+length(intersect(wm46.cells.with, scrna@meta.data$patient_barcode_clean))
+scrna@meta.data$topCDR3s[scrna@meta.data$patient_barcode_clean %in% wm46.cells.with] <- "CQQYNNWPRTF"
+scrna@meta.data$hasTopCDR3[scrna@meta.data$patient_barcode_clean %in% wm46.cells.with] <- "Yes"
+table(scrna@meta.data$topCDR3s)
+table(scrna@meta.data$hasTopCDR3)
+
+wm$data[[11]]
+wm47.cells.with <- all_barcodes$patient_barcode_clean[all_barcodes$junction_aa == "CQQYGSSSSYTF"]
+length(intersect(wm47.cells.with, scrna@meta.data$patient_barcode_clean))
+scrna@meta.data$topCDR3s[scrna@meta.data$patient_barcode_clean %in% wm47.cells.with] <- "CQQYGSSSSYTF"
+scrna@meta.data$hasTopCDR3[scrna@meta.data$patient_barcode_clean %in% wm47.cells.with] <- "Yes"
+table(scrna@meta.data$topCDR3s)
+table(scrna@meta.data$hasTopCDR3)
+
+wm$data[[12]]
+wm54.cells.with <- all_barcodes$patient_barcode_clean[all_barcodes$junction_aa == "CQQCGDWPLTF"]
+length(intersect(wm54.cells.with, scrna@meta.data$patient_barcode_clean))
+scrna@meta.data$topCDR3s[scrna@meta.data$patient_barcode_clean %in% wm54.cells.with] <- "CQQCGDWPLTF"
+scrna@meta.data$hasTopCDR3[scrna@meta.data$patient_barcode_clean %in% wm54.cells.with] <- "Yes"
+table(scrna@meta.data$topCDR3s)
+table(scrna@meta.data$hasTopCDR3)
+
+wm$data[[13]]
+wm65.cells.with <- all_barcodes$patient_barcode_clean[all_barcodes$junction_aa == "CQQYNSYPYTF"]
+length(intersect(wm65.cells.with, scrna@meta.data$patient_barcode_clean))
+scrna@meta.data$topCDR3s[scrna@meta.data$patient_barcode_clean %in% wm65.cells.with] <- "CQQYNSYPYTF"
+scrna@meta.data$hasTopCDR3[scrna@meta.data$patient_barcode_clean %in% wm65.cells.with] <- "Yes"
+table(scrna@meta.data$topCDR3s)
+table(scrna@meta.data$hasTopCDR3)
+```
+

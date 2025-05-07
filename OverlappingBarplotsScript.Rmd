@@ -1,0 +1,57 @@
+---
+title: "ABL_Prep"
+output: html_document
+date: "2024-01-14"
+---
+
+```{r}
+library(Seurat)
+library(ggplot2)
+library(reshape2)
+```
+
+```{r}
+patient <- c("01-190", "04-003", "01-076", "01-115", "01-131", "01-163", "04-006", "WM25", "WM43", "WM46", "WM47", "WM54", "WM65")
+before <- c(3075, 11354, 7394, 9745, 6930, 5382, 8764, 13809, 10244, 2792, 8561, 5621, 7603)
+after <- c(2959, 10403, 6996, 9365, 6872, 4902, 8709, 12847, 9772, 5, 8327, 5224, 7344)
+
+scrna.qc.df <- data.frame(patient, before, after)
+
+scrna.qc.df.long <- melt(scrna.qc.df, id.vars = c("patient"))
+ggplot(scrna.qc.df.long, aes(x = patient, y = value, fill = variable, color = variable, alpha = variable)) +
+  geom_bar(stat="identity", position ="identity") +
+  scale_colour_manual(values=c("red", "lightblue4")) +
+  scale_fill_manual(values=c("pink", "lightblue")) +
+  scale_alpha_manual(values=c(.3, .5)) + ylab("Cells") + xlab("Patient") + theme_minimal(base_size = 18)
+ggsave("/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/scRNA_BeforeAfter_QC_CellBarPlots.png", height = 8, width = 12)
+
+
+specie <- c(rep("sorgho" , 3) , rep("poacee" , 3) , rep("banana" , 3) , rep("triticum" , 3) )
+condition <- rep(c("normal" , "stress" , "Nitrogen") , 4)
+value <- abs(rnorm(12 , 0 , 15))
+data <- data.frame(specie,condition,value)
+data
+
+patient <- c(rep("01-190", 2), rep("04-003", 2), rep("01-076", 2), rep("01-115", 2), rep("01-131", 2), rep("01-163", 2), rep("04-006", 2), rep("WM25", 2), rep("WM43", 2), rep("WM46", 2), rep("WM47", 2), rep("WM54", 2), rep("WM65", 2))
+condition <- c(rep(c("before", "after"),13))
+values <- c(3075, 2959,
+            11354, 10403,
+            7394, 6996, 
+            9745, 9365,
+            6930, 6872,
+            5382, 4902,
+            8764, 8709,
+            13809, 12847,
+            10244, 9772,
+            2792, 5, 
+            8561, 8327,
+            5621, 5224,
+            7603, 7344
+            )
+scrna.qc.df <- data.frame(patient, condition, values)
+
+ggplot(scrna.qc.df, aes(fill=condition, y=values, x=patient)) + 
+    geom_bar(position="dodge", stat="identity") + theme(element_text(size = 12) +#scale_y_continuous(limits = 0, 14000)
+  theme_minimal()
+```
+

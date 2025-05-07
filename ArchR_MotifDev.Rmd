@@ -1,0 +1,161 @@
+---
+title: "ArchR_MotifDev_Analysis"
+output: html_document
+date: "2023-11-30"
+---
+
+Load libraries etc.
+```{r}
+library(Seurat)
+library(ggplot2)
+library(ArchR)
+library(BSgenome.Hsapiens.UCSC.hg38)
+addArchRThreads(threads = 1)
+addArchRGenome("hg38")
+options(future.globals.maxSize=10000000000000000) 
+```
+Load in
+```{r}
+archR <- loadArchRProject(path = "/Users/gagled01/morganLab/Waldenstroms/Waldenstroms_Git/WM_NoControls_NoProgens_chromVAR_DownstreamObject")
+```
+Sanity check
+```{r}
+plotEmbedding(archR, embedding = "NoProgen_Recluster_UMAP", name = "celltypes")
+```
+Get up vardevs
+```{r}
+vardev <- getVarDeviations(archR, name = "MotifMatrix", plot = FALSE)
+vardev.df <- as.data.frame(vardev)
+head(vardev.df, n = 70)
+
+vardev.list <- c("JUNB", "FOSL1", "FOSL2", "JUND", "SMARCC1", "FOS", "JUN", "JDP2", "BACH1", "TCF4", "RELA", "MESP1", "MESP2", "ID3", "ID4", "FOSB", "SNAI2", "BACH2", "ZEB1", "NFKB1")
+vardev.list2 <- vardev.df$name[1:50] # just get top 50 of em
+
+# Extract specific motifs
+specificMotifs <- getFeatures(archR, select = paste(vardev.list2, collapse="|"), useMatrix = "MotifMatrix")
+specificMotifs <- grep("z:", specificMotifs, value = TRUE)
+
+# Overlay onto UMAPs
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "PeakMatrix", 
+    name = sort(specificMotifs), 
+    embedding = "NoProgen_Recluster_UMAP",
+    imputeWeights = getImputeWeights(archR)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0, 0, 0, 0), "cm")) +
+    theme(
+        axis.text.x=element_blank(), 
+        axis.ticks.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank()
+    )
+})
+#do.call(cowplot::plot_grid, c(list(ncol = 3),p2))
+
+plotPDF(p2, name = "NoProgens_Top50_ChromVARs", width = 5, height = 5, ArchRProj = archR, addDOC = FALSE)
+
+
+```
+Get marke featuresse??
+```{r}
+varDev.markers <- getMarkerFeatures(archR, 
+                         useMatrix = "MotifMatrix", 
+                         useSeqnames = "z",
+                         groupBy = "yesnoPC",
+                         bias = c("TSSEnrichment", "log10(nFrags)"),
+                         testMethod = "wilcoxon")
+
+getMarkers(varDev.markers)
+
+varDev.markers@assays@data@listData[["MeanDiff"]]
+
+nutfk <- as.data.frame(varDev.markers@assays@data$MeanDiff)
+nutfk$motif <- vardev.df$name
+nutfk[order(-nutfk$yes),]
+
+vardev.df$name
+```
+
+Plot up the B-cell differentiation genes with motifs
+```{r}
+geneList <- c("REL", "BATF", "IRF4", "EBF1", "POU2F2", "MEF2A", "NFKB1", "NFKB2", "IRF8", # MBC associated according to Hussein email
+              "EOMES", "TXB21", "GATA3", "LEF1", "TCF7", "PRDM1", "XBP1", "JCHAIN") # PC associated according to Hussein email + xbp1 and jchain added from me
+
+# Extract specific motifs
+specificMotifs <- getFeatures(archR, select = paste(geneList, collapse="|"), useMatrix = "MotifMatrix")
+specificMotifs <- grep("z:", specificMotifs, value = TRUE)
+
+# Overlay onto UMAPs
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "MotifMatrix", 
+    name = sort(specificMotifs), 
+    embedding = "NoProgen_Recluster_UMAP",
+    imputeWeights = getImputeWeights(archR)
+)
+
+p$`z:BATF_129`
+p$`z:EBF1_67`
+p$`z:EOMES_788`
+p$`z:GATA3_384`
+p$`z:IRF4_632`
+p$`z:IRF8_633`
+p$`z:LEF1_760`
+p$`z:MEF2A_639`
+p$`z:NFKB1_719`
+p$`z:NFKB2_714`
+p$`z:POU2F2_609`
+p$`z:PRDM1_163`
+p$`z:REL_721`
+p$`z:RELA_722`
+p$`z:RELB_718`
+p$`z:TCF7_750`
+p$`z:XBP1_109`
+
+```
+
+```{r}
+geneList2 <- c("BCL6", "IRF4", "XBP1", "PRDM1", "BACH2", "JCHAIN", "POU2AF1", "PAX5", "SPIB", "ETS1", "SPI1", "IRF8", "MYD88", "CXCR4", "PELI1")
+
+# Extract specific motifs
+specificMotifs <- getFeatures(archR, select = paste(geneList2, collapse="|"), useMatrix = "MotifMatrix")
+specificMotifs <- grep("z:", specificMotifs, value = TRUE)
+
+# Overlay onto UMAPs
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "MotifMatrix", 
+    name = sort(specificMotifs), 
+    embedding = "NoProgen_Recluster_UMAP",
+    imputeWeights = getImputeWeights(archR)
+)
+
+p$`z:BCL6_187`
+p$`z:BCL6B_218`
+p$`z:IRF4_632`
+p$`z:XBP1_109`
+p$`z:PRDM1_163`
+p$`z:ETS1_332`
+p$`z:IRF8_633`
+p$`z:PAX5_709`
+p$`z:SPI1_322`
+p$`z:SPIB_336`
+p$`z:BACH2_113`
+
+
+
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "PeakMatrix", 
+    name = geneList2, 
+    embedding = "NoProgen_Recluster_UMAP",
+    imputeWeights = getImputeWeights(archR)
+)
+
+```
+

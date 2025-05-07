@@ -1,0 +1,530 @@
+---
+title: "ArchR_2ndPush_DownstreamAnalysis"
+output: html_document
+date: "2023-11-21"
+---
+
+Load libraries etc.
+```{r}
+library(Seurat)
+library(ggplot2)
+library(ArchR)
+library(BSgenome.Hsapiens.UCSC.hg38)
+addArchRThreads(threads = 1)
+addArchRGenome("hg38")
+options(future.globals.maxSize=10000000000000000) 
+```
+Load in
+```{r}
+archR <- loadArchRProject(path = "/Users/gagled01/morganLab/Waldenstroms/Waldenstroms_Git/WM_NoControls_NoProgens_DownstreamObject")
+```
+Sanity check
+```{r}
+archR@embeddings
+p1 <- plotEmbedding(archR, embedding = "NoProgen_Recluster_UMAP", name = "celltypes")
+p2 <- plotEmbedding(archR, embedding = "NoProgen_Recluster_UMAP", name = "samplesClean")
+p3 <- plotEmbedding(archR, embedding = "NoProgen_Recluster_UMAP", name = "topCDR3s")
+p4 <- plotEmbedding(archR, embedding = "NoProgen_Recluster_UMAP", name = "hasTopCDR3")
+p5 <- plotEmbedding(archR, embedding = "NoProgen_Recluster_UMAP", name = "yesnoPC")
+
+plotPDF(p1, p2, p3, p4, p5, name = "NoProgen_Recluster_MainUMAPs", width = 5, height = 5, ArchRProj = archR, addDOC = FALSE)
+```
+Fixing has/has not PC...
+```{r}
+archR$yesnoPC <- archR$samplesClean
+archR$yesnoPC[archR$samplesClean == "01-076"] <- "no"
+archR$yesnoPC[archR$samplesClean == "01-115"] <- "no"
+archR$yesnoPC[archR$samplesClean == "01-131"] <- "yes"
+archR$yesnoPC[archR$samplesClean == "01-163"] <- "no"
+archR$yesnoPC[archR$samplesClean == "01-190"] <- "yes"
+archR$yesnoPC[archR$samplesClean == "04-003"] <- "yes"
+archR$yesnoPC[archR$samplesClean == "04-006"] <- "no"
+archR$yesnoPC[archR$samplesClean == "WM25"] <- "yes"
+archR$yesnoPC[archR$samplesClean == "WM43"] <- "yes"
+archR$yesnoPC[archR$samplesClean == "WM46"] <- "no"
+archR$yesnoPC[archR$samplesClean == "WM47"] <- "no"
+archR$yesnoPC[archR$samplesClean == "WM54"] <- "no"
+archR$yesnoPC[archR$samplesClean == "WM65"] <- "no"
+
+plotEmbedding(archR, embedding = "NoProgen_Recluster_UMAP", name = "yesnoPC")
+```
+
+Check specific B cell differentiation genes - GENE EXPRESSION
+```{r}
+markerGenes <- c("PAX5", "BCL6", "XBP1", "PRDM1", "BACH2", "JCHAIN", "SLC22A2", "POU2AF1", "SPI1", "SPIB", "ETS1", "IRF4", "IRF8", "CD40", "CXCR4", "MYD88")
+# PRDM1 = BLIMP1
+# SLC22A2 = OCT2
+# POU2AF1 = OBF1
+# SPI1 = PU.1
+
+p <- plotEmbedding(
+    ArchRProj = archR,
+    colorBy = "GeneIntegrationMatrix",
+    name = markerGenes,
+    embedding = "NoProgen_Recluster_UMAP",
+    imputeWeights = getImputeWeights(archR)
+)
+
+p$PAX5
+p$BCL6
+p$XBP1
+p$PRDM1
+p$BACH2
+p$JCHAIN
+p$SLC22A2
+p$POU2AF1
+p$SPI1
+p$SPIB
+p$ETS1
+p$IRF4
+p$IRF8
+p$CD40
+p$CXCR4
+p$MYD88
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 10) +
+    theme(plot.margin = unit(c(0, 0, 0, 0), "cm")) +
+    theme(
+        axis.text.x=element_blank(), 
+        axis.ticks.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 2),p))
+
+p2
+plotPDF(plotList = p2, 
+    name = "Reclustered_NoProgens_BCellDifferentiationGenes_UMAPs_GEX.pdf", 
+    ArchRProj = archR, 
+    addDOC = FALSE, width = 5, height = 5)
+```
+Check specific B cell differentiation genes - GENE SCORE
+```{r}
+markerGenes <- c("PAX5", "BCL6", "XBP1", "PRDM1", "BACH2", "JCHAIN", "SLC22A2", "POU2AF1", "SPI1", "SPIB", "ETS1", "IRF4", "IRF8", "CD40", "CXCR4", "MYD88")
+# PRDM1 = BLIMP1
+# SLC22A2 = OCT2
+# POU2AF1 = OBF1
+# SPI1 = PU.1
+
+
+p <- plotEmbedding(
+    ArchRProj = archR,
+    colorBy = "GeneScoreMatrix",
+    name = markerGenes,
+    embedding = "NoProgen_Recluster_UMAP",
+    imputeWeights = getImputeWeights(archR)
+)
+
+p$PAX5
+p$BCL6
+p$XBP1
+p$PRDM1
+p$BACH2
+p$JCHAIN
+p$SLC22A2
+p$POU2AF1
+p$SPI1
+p$SPIB
+p$ETS1
+p$IRF4
+p$IRF8
+p$CD40
+p$CXCR4
+p$MYD88
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0, 0, 0, 0), "cm")) +
+    theme(
+        axis.text.x=element_blank(), 
+        axis.ticks.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 2),p))
+
+p2
+plotPDF(plotList = p2, 
+    name = "Reclustered_NoProgens_BCellDifferentiationGenes_UMAPs_GeneScore.pdf", 
+    ArchRProj = archR, 
+    addDOC = FALSE, width = 5, height = 5)
+```
+################################################################################
+############################## HAS VS HAS NOT PCS ##############################
+################################################################################
+
+Marker peaks by has or has no PC - GEX
+```{r}
+# By GEX
+markersGEX <- getMarkerFeatures(
+    ArchRProj = archR, 
+    useMatrix = "GeneIntegrationMatrix", 
+    groupBy = "yesnoPC",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  testMethod = "wilcoxon"
+)
+
+markersGEX_list <- getMarkers(markersGEX, cutOff = "FDR < 0.1 & Log2FC > 0.5")
+
+# Has PC
+hasPC.df.gex <- markersGEX_list$`yes`
+hasPC.df.gex <- as.data.frame(hasPC.df.gex)
+head(hasPC.df.gex[order(-hasPC.df.gex$MeanDiff),], n = 50)
+
+# No PC
+noPC.df.gex <- markersGEX_list$`no`
+noPC.df.gex <- as.data.frame(noPC.df.gex)
+head(noPC.df.gex[order(-noPC.df.gex$MeanDiff),], n = 20)
+```
+# Has/No PC by PEAKS
+```{r}
+# By PEAKS
+markerTest <- getMarkerFeatures(
+  ArchRProj = archR, 
+  useMatrix = "PeakMatrix",
+  groupBy = "yesnoPC",
+  testMethod = "wilcoxon",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  useGroups = "yes",
+  bgdGroups = "no"
+)
+
+pv <- markerPlot(seMarker = markerTest, name = "yes", cutOff = "FDR <= 0.1 & abs(Log2FC) >= 0.5", plotAs = "Volcano")
+
+#archR <- addMotifAnnotations(ArchRProj = archR, motifSet = "cisbp", name = "Motif")
+
+motifsUp <- peakAnnoEnrichment(
+    seMarker = markerTest,
+    ArchRProj = archR,
+    peakAnnotation = "Motif",
+    cutOff = "FDR <= 0.1 & Log2FC >= 0.5"
+  )
+
+df.up <- data.frame(TF = rownames(motifsUp), mlog10Padj = assay(motifsUp)[,1])
+df.up <- df.up[order(df.up$mlog10Padj, decreasing = TRUE),]
+df.up$rank <- seq_len(nrow(df.up))
+
+ggUp <- ggplot(df.up, aes(rank, mlog10Padj, color = mlog10Padj)) + 
+  geom_point(size = 1) +
+  ggrepel::geom_label_repel(
+        data = df.up[rev(seq_len(20)), ], aes(x = rank, y = mlog10Padj, label = TF), 
+        size = 1.5,
+        nudge_x = 2,
+        color = "black"
+  ) + theme_ArchR() + 
+  ylab("-log10(P-adj) Motif Enrichment") + 
+  xlab("Rank Sorted TFs Enriched") +
+  scale_color_gradientn(colors = paletteContinuous(set = "comet"))
+
+# DOWN - note negative log2FC instead of positive and LESS than instead of GREATER THAN
+
+motifsDown <- peakAnnoEnrichment(
+    seMarker = markerTest,
+    ArchRProj = archR,
+    peakAnnotation = "Motif",
+    cutOff = "FDR <= 0.1 & Log2FC <= -0.5"
+  )
+
+df.down <- data.frame(TF = rownames(motifsDown), mlog10Padj = assay(motifsDown)[,1])
+df.down <- df.down[order(df.down$mlog10Padj, decreasing = TRUE),]
+df.down$rank <- seq_len(nrow(df.down))
+
+ggDown <- ggplot(df.down, aes(rank, mlog10Padj, color = mlog10Padj)) + 
+  geom_point(size = 1) +
+  ggrepel::geom_label_repel(
+        data = df.down[rev(seq_len(20)), ], aes(x = rank, y = mlog10Padj, label = TF), 
+        size = 1.5,
+        nudge_x = 2,
+        color = "black"
+  ) + theme_ArchR() + 
+  ylab("-log10(P-adj) Motif Enrichment") + 
+  xlab("Rank Sorted TFs Enriched") +
+  scale_color_gradientn(colors = paletteContinuous(set = "comet"))
+
+ggUp
+ggDown
+
+plotPDF(pv, ggUp, ggDown, name = "yesnoPC-MarkerPeaks_0.1FDR_0.5LogFC_Volcano_RankSorted", width = 5, height = 5, ArchRProj = archR, addDOC = FALSE)
+
+```
+Motif Enrichment in groups
+```{r}
+enrichMotifs <- peakAnnoEnrichment(
+    seMarker = markerTest,
+    ArchRProj = archR,
+    peakAnnotation = "Motif",
+    cutOff = "FDR <= 0.1 & Log2FC >= 0.1"
+  )
+
+heatmapEM <- plotEnrichHeatmap(enrichMotifs, n = 1, transpose = TRUE) # NO ENRICHMENTS????
+
+ComplexHeatmap::draw(heatmapEM, heatmap_legend_side = "bot", annotation_legend_side = "bot")
+
+plotPDF(heatmapEM, name = "Has-vs-NoPC-Motifs-Enriched-Marker-Heatmap", width = 8, height = 6, ArchRProj = archR, addDOC = FALSE)
+
+# Different motif annotation
+archR <- addArchRAnnotations(ArchRProj = archR, collection = "EncodeTFBS")
+
+enrichEncode <- peakAnnoEnrichment(
+    seMarker = markerTest,
+    ArchRProj = archR,
+    peakAnnotation = "EncodeTFBS",
+    cutOff = "FDR <= 0.1 & Log2FC >= 0.5"
+  )
+
+heatmapEM <- plotEnrichHeatmap(enrichEncode, n = 1, transpose = TRUE) # NO ENRICHMENTS????
+
+```
+Removing PCs and retrying
+```{r}
+idsRemove <- as.character(archR$cellNames[archR$celltypes %in% c("Plasma cells")])
+archR_MBC_ONLY <- archR[!archR$cellNames %in% idsRemove,]
+
+# By GEX
+markersGEX.MBC <- getMarkerFeatures(
+    ArchRProj = archR_MBC_ONLY, 
+    useMatrix = "GeneIntegrationMatrix", 
+    groupBy = "yesnoPC",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+  testMethod = "wilcoxon"
+)
+
+markersGEX_list.MBC <- getMarkers(markersGEX.MBC, cutOff = "FDR < 0.1 & Log2FC > 0.5")
+
+# Has PC
+hasPC.df.gex.MBC <- markersGEX_list.MBC$`yes`
+hasPC.df.gex.MBC <- as.data.frame(hasPC.df.gex.MBC)
+head(hasPC.df.gex.MBC[order(-hasPC.df.gex.MBC$MeanDiff),], n = 25)
+
+# No PC
+noPC.df.gex.MBC <- markersGEX_list.MBC$`no`
+noPC.df.gex.MBC <- as.data.frame(noPC.df.gex.MBC)
+head(noPC.df.gex.MBC[order(-noPC.df.gex.MBC$MeanDiff),], n = 25)
+
+#################################### By PEAKS #################################### 
+markerTest <- getMarkerFeatures(
+  ArchRProj = archR, 
+  useMatrix = "PeakMatrix",
+  groupBy = "celltypes",
+  useGroups = "Malignant MBC",
+  bgdGroups = "Normal MBC",
+  testMethod = "wilcoxon",
+  bias = c("TSSEnrichment", "log10(nFrags)"),
+)
+
+pv <- markerPlot(seMarker = markerTest, name = "Malignant MBC", cutOff = "FDR <= 0.1 & abs(Log2FC) >= 0.5", plotAs = "Volcano")
+
+#archR_MBC_ONLY <- addMotifAnnotations(ArchRProj = archR_MBC_ONLY, motifSet = "cisbp", name = "Motif")
+
+motifsUp <- peakAnnoEnrichment(
+    seMarker = markerTest,
+    ArchRProj = archR_MBC_ONLY,
+    peakAnnotation = "Motif",
+    cutOff = "FDR <= 0.1 & Log2FC >= 0.5"
+  )
+
+df.up <- data.frame(TF = rownames(motifsUp), mlog10Padj = assay(motifsUp)[,1])
+df.up <- df.up[order(df.up$mlog10Padj, decreasing = TRUE),]
+df.up$rank <- seq_len(nrow(df.up))
+
+ggUp <- ggplot(df.up, aes(rank, mlog10Padj, color = mlog10Padj)) + 
+  geom_point(size = 1) +
+  ggrepel::geom_label_repel(
+        data = df.up[rev(seq_len(20)), ], aes(x = rank, y = mlog10Padj, label = TF), 
+        size = 1.5,
+        nudge_x = 2,
+        color = "black"
+  ) + theme_ArchR() + 
+  ylab("-log10(P-adj) Motif Enrichment") + 
+  xlab("Rank Sorted TFs Enriched") +
+  scale_color_gradientn(colors = paletteContinuous(set = "comet"))
+
+# DOWN - note negative log2FC instead of positive and LESS than instead of GREATER THAN
+
+motifsDown <- peakAnnoEnrichment(
+    seMarker = markerTest,
+    ArchRProj = archR_MBC_ONLY,
+    peakAnnotation = "Motif",
+    cutOff = "FDR <= 0.1 & Log2FC <= -0.5"
+  )
+
+df.down <- data.frame(TF = rownames(motifsDown), mlog10Padj = assay(motifsDown)[,1])
+df.down <- df.down[order(df.down$mlog10Padj, decreasing = TRUE),]
+df.down$rank <- seq_len(nrow(df.down))
+
+ggDown <- ggplot(df.down, aes(rank, mlog10Padj, color = mlog10Padj)) + 
+  geom_point(size = 1) +
+  ggrepel::geom_label_repel(
+        data = df.down[rev(seq_len(20)), ], aes(x = rank, y = mlog10Padj, label = TF), 
+        size = 1.5,
+        nudge_x = 2,
+        color = "black"
+  ) + theme_ArchR() + 
+  ylab("-log10(P-adj) Motif Enrichment") + 
+  xlab("Rank Sorted TFs Enriched") +
+  scale_color_gradientn(colors = paletteContinuous(set = "comet"))
+
+ggUp
+ggDown
+
+plotPDF(pv, ggUp, ggDown, name = "yesnoPC-MarkerPeaks_0.1FDR_0.5LogFC_Volcano_RankSorted", width = 5, height = 5, ArchRProj = archR, addDOC = FALSE)
+```
+
+MOTIF DEEVIATIIONS
+```{r}
+# Make sure to have motifs added
+archR <- addMotifAnnotations(ArchRProj = archR, motifSet = "cisbp", name = "Motif")
+
+# Add background peaks
+archR <- addBgdPeaks(archR)
+
+# Add deeviations
+archR <- addDeviationsMatrix(
+  ArchRProj = archR, 
+  peakAnnotation = "Motif",
+  force = TRUE
+)
+
+# Df of deevs
+VarDevDF <- getVarDeviations(archR, name = "MotifMatrix", plot = FALSE)
+
+# Plot?
+plotVarDev <- getVarDeviations(archR, name = "MotifMatrix", plot = TRUE)
+head(plotVarDev, n = 20)
+
+# Extract specific motifs
+motifs <- c("JUNB", "TCF4", "BACH2", "BACH1", "IRF4", "IRF8", "PAX5")
+markerMotifs <- getFeatures(archR, select = paste(motifs, collapse="|"), useMatrix = "MotifMatrix")
+markerMotifs <- grep("z:", markerMotifs, value = TRUE)
+markerMotifs
+
+# Plot specific motifs
+p <- plotGroups(ArchRProj = archR, 
+  groupBy = "samplesClean", 
+  colorBy = "MotifMatrix", 
+  name = markerMotifs,
+  imputeWeights = getImputeWeights(archR)
+)
+
+p2 <- lapply(seq_along(p), function(x){
+  if(x != 1){
+    p[[x]] + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 6) +
+    theme(plot.margin = unit(c(0.1, 0.1, 0.1, 0.1), "cm")) +
+    theme(
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank(),
+        axis.title.y=element_blank()
+    ) + ylab("")
+  }else{
+    p[[x]] + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 6) +
+    theme(plot.margin = unit(c(0.1, 0.1, 0.1, 0.1), "cm")) +
+    theme(
+        axis.ticks.y=element_blank(),
+        axis.title.y=element_blank()
+    ) + ylab("")
+  }
+})
+
+do.call(cowplot::plot_grid, c(list(nrow = 1, rel_widths = c(2, rep(1, length(p2) - 1))),p2))
+
+# Overlay onto UMAPs
+p <- plotEmbedding(
+    ArchRProj = archR, 
+    colorBy = "MotifMatrix", 
+    name = sort(markerMotifs), 
+    embedding = "NoProgen_Recluster_UMAP",
+    imputeWeights = getImputeWeights(archR)
+)
+
+p2 <- lapply(p, function(x){
+    x + guides(color = FALSE, fill = FALSE) + 
+    theme_ArchR(baseSize = 6.5) +
+    theme(plot.margin = unit(c(0, 0, 0, 0), "cm")) +
+    theme(
+        axis.text.x=element_blank(), 
+        axis.ticks.x=element_blank(), 
+        axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank()
+    )
+})
+do.call(cowplot::plot_grid, c(list(ncol = 3),p2))
+```
+Save it out now that we have chromVAR deviations
+```{r}
+saveArchRProject(ArchRProj = archR, outputDirectory = "WM_NoControls_NoProgens_chromVAR_DownstreamObject", load = F)
+```
+
+Weird PC patient check
+
+```{r}
+markerGenes <- c("MZB1", "DUSP26", "CADPS2", "JCHAIN", "MIR600HG","MAG",
+                 "MKI67", "SUGCT", "AICDA",
+                 "CR2", "CD27", "MS4A1", "CD74", "HLA-DRA", "RACK1"
+                 )
+
+hla.genes <- c("HLA-F", "HLA-F-AS1", "HLA-G", "HLA-A", "HLA-E", "HLA-C", "HLA-B", "HLA-DRA", "HLA-DRB5", "HLA-DRB1", "HLA-DQA1", "HLA-DQB1-AS1", "HLA-DQB1", "HLA-DQA2", "HLA-DQB2", "HLA-DOB", "HLA-DOA", "HLA-DPA1", "HLA-DPB1")
+
+# PRDM1 = BLIMP1
+# SLC22A2 = OCT2
+# POU2AF1 = OBF1
+# SPI1 = PU.1
+
+
+p <- plotEmbedding(
+    ArchRProj = archR,
+    colorBy = "GeneIntegrationMatrix",
+    name = hla.genes,
+    embedding = "NoProgen_Recluster_UMAP",
+    imputeWeights = getImputeWeights(archR)
+)
+
+p$MZB1
+p$DUSP26
+p$CADPS2
+p$JCHAIN
+p$MIR600HG
+p$MAG
+p$ZNF804A
+p$MKI67
+p$SUGCT
+p$AICDA
+p$CR2
+p$CD27
+p$MS4A1
+p$`HLA-DRA`
+p$RACK1
+
+
+
+getFeatures(archR, useMatrix = "GeneIntegrationMatrix", select = "HLA")
+
+markersPeaks <- getMarkerFeatures(
+    ArchRProj = archR, 
+    useMatrix = "PeakMatrix", 
+    groupBy = "samplesClean",
+    bias = c("TSSEnrichment", "log10(nFrags)"),
+    testMethod = "wilcoxon"
+)
+
+markerList <- getMarkers(markersPeaks, cutOff = "FDR <= 0.01 & Log2FC >= 1.25")
+as.data.frame(markerList$WM43[order(-markerList$WM43$MeanDiff),])
+
+enrichMotifs <- peakAnnoEnrichment(
+    seMarker = markersPeaks,
+    ArchRProj = archR,
+    peakAnnotation = "Motif",
+    cutOff = "FDR <= 0.1 & Log2FC >= 0.5"
+  )
+
+heatmapEM <- plotEnrichHeatmap(enrichMotifs, n = 7, transpose = TRUE)
+
+ComplexHeatmap::draw(heatmapEM, heatmap_legend_side = "bot", annotation_legend_side = "bot")
+```
+
