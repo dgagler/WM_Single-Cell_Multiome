@@ -15,6 +15,7 @@ library(SoupX)
 library(celda)
 library(DropletUtils)
 library(glmGamPoi)
+library(Matrix)
 options(future.globals.maxSize=10000000000000000)
 ```
 # Load cellranger outputs, filter, etc. without SoupX
@@ -568,3 +569,26 @@ Save out
 ```{r}
 saveRDS(integrated, "/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/scRNA_SCTransformed_Integrated.rds")
 ```
+########################################################################################################################################################################################################
+######## Generating outputs (matrix, cell names, and gene names) for use in CellTypist from just generated object #######
+########################################################################################################################################################################################################
+
+```{r}
+# Read in Seurat object
+integrated <- readRDS("/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/scRNA_SCTransformed_Integrated.rds")
+
+# CellTypist requires a log-normalized (to 10,000) expression matrix, a list of cells, and a list of genes/features
+raw.matrix <- integrated@assays$RNA@data 
+cell.names <- Cells(integrated@assays$RNA)
+gene.names <- rownames(integrated@assays$RNA)
+
+# Write out sparse matrix
+writeMM(raw.matrix, '/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/scRNA_SCTransformed_Integrated_ReferenceAdd_Matrix.mtx')
+
+# Write out gene and cell lists
+write.table(cell.names, '/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/scRNA_SCTransformed_Integrated_ReferenceAdd_CellNames.tsv', quote = F, sep = '\t', 
+            col.names = F, row.names = F)
+write.table(gene.names, '/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/scRNA_SCTransformed_Integrated_ReferenceAdd_GeneNames.tsv', quote = F, sep = '\t',
+            col.names = F, row.names = F)
+```
+

@@ -34,23 +34,30 @@ archR <- addIterativeLSI(
   force = T
 )
 
-archR <- addClusters(
-  input = archR,
-  reducedDims = "IterativeLSI_BLineage_Recluster",
-  method = "Seurat",
-  name = "BLin_Clusters",
-  resolution = 0.9,
-  force = T
+archR <- addHarmony(
+  archR,
+  reducedDims = "IterativeLSI_BLineage_Recluster_NoProgens",
+  name = "FinalHarmony",
+  groupBy = "batch"
 )
 
 archR <- addUMAP(
     ArchRProj = archR, 
-    reducedDims = "IterativeLSI_BLineage_Recluster", 
-    name = "BLineage_Recluster_UMAP", 
+    reducedDims = "FinalHarmony", 
+    name = "UMAP_Harmony", 
     nNeighbors = 30, 
     minDist = 0.5, 
     metric = "cosine",
     force = T
+)
+
+archR <- addClusters(
+  input = archR,
+  reducedDims = "FinalHarmony",
+  method = "Seurat",
+  name = "FinalHarmony_Clusters",
+  resolution = 0.8,
+  force = TRUE
 )
 ```
 # Dirty way to get celltype relative abundance by patient dataframe for stacked barplots
