@@ -1,0 +1,192 @@
+---
+title: "WM_Tables"
+output: html_document
+date: "2024-05-07"
+---
+
+Load libraries
+```{r}
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(ComplexHeatmap)
+library(grid)
+library(gridExtra)
+library(patchwork)
+library(flextable)
+library(ArchR)
+addArchRThreads(threads = 1)
+addArchRGenome("hg38")
+options(future.globals.maxSize=1000000000000000000000000000) 
+```
+# Load data
+```{r}
+archR <- loadArchRProject(path = "/Users/gagled01/morganLab/Waldenstroms/singlecell/data/ATAC_fragments/WM_DeviationsAdded")
+
+archR$tripartite_annotation <- archR$annotation3
+archR$tripartite_annotation[archR$samplesClean == "WM43"] <- "Intermediate MBC"
+archR$tripartite_annotation[archR$annotation1 == "C5 - WM54 Secondary Clone"] <- "MBC-like MBC"
+archR$tripartite_annotation[archR$annotation3 == "MBC-like MBC" & archR$samplesClean == "04-006"] <- "PC-like MBC"
+archR$tripartite_annotation[archR$annotation3 == "MBC-like MBC" & archR$samplesClean == "01-115"] <- "PC-like MBC"
+archR$tripartite_annotation[archR$annotation3 == "PC-like MBC" & archR$samplesClean == "01-190"] <- "MBC-like MBC"
+archR$tripartite_annotation[archR$annotation3 == "PC-like MBC" & archR$samplesClean == "WM25"] <- "Intermediate MBC"
+archR$tripartite_annotation[archR$annotation1 == "C2 - Clonal MBC" & archR$samplesClean == "WM54"] <- "Intermediate MBC"
+#archR$tripartite_annotation[archR$annotation1 == "C2 - Clonal MBC" & archR$samplesClean == "01-190"] <- "Intermediate MBC"
+
+
+archR$annotation2 <- archR$annotation1
+archR$annotation2[archR$annotation1 == "C3 - Non-clonal PC"] <- "C1 - Clonal PCs"
+archR$annotation2[archR$annotation1 == "C5 - WM54 Secondary Clone"] <- "C2 - Clonal MBC"
+archR$annotation2[archR$annotation1 == "C6 - Clonal MBC Minor Cluster 1"] <- "C2 - Clonal MBC"
+archR$annotation2[archR$annotation1 == "C7 - Clonal MBC Minor Cluster 2"] <- "C2 - Clonal MBC"
+archR$annotation2[archR$annotation2 == "C1 - Clonal PCs"] <- "Clonal PCs"
+archR$annotation2[archR$annotation1 == "C10 - HD Memory B cells"] <- "Reference MBC"
+archR$annotation2[archR$annotation1 == "C11 - HD Plasma cells"] <- "Reference PC"
+archR$annotation2[archR$annotation2 == "C2 - Clonal MBC"] <- "Clonal MBC"
+archR$annotation2[archR$annotation1 == "C4 - Non-clonal MBC"] <- "Non-clonal MBC"
+archR$annotation2[archR$annotation1 == "C8 - HD GC B cells"] <- "Reference GC"
+archR$annotation2[archR$annotation1 == "C9 - HD Naive B cells"] <- "Reference Naive"
+table(archR$annotation2)
+
+archR$annotation3 <- archR$annotation2
+archR$annotation3[archR$annotation2 == "Clonal MBC" & archR$hasPC == "+"] <- "PC-like MBC"
+archR$annotation3[archR$annotation2 == "Clonal MBC" & archR$hasPC == "-"] <- "MBC-like MBC"
+archR$annotation3[archR$annotation3 == "Clonal MBC"] <- "PC-like MBC"
+table(archR$annotation3)
+
+archR$annotation4 <- archR$annotation2
+archR$annotation4[archR$hasPC == "+"] <- "PC-like"
+archR$annotation4[archR$hasPC == "-"] <- "MBC-like"
+archR$annotation4[archR$condition == "HD"] <- "Reference"
+
+archR$subtype <- archR$hasPC 
+archR$subtype[archR$hasPC == "+"] <- "PC-like"
+archR$subtype[archR$hasPC == "-"] <- "MBC-like"
+table(archR$subtype)
+
+archR$annotation5 <- archR$annotation1
+archR$annotation5[archR$annotation1 == "C3 - Non-clonal PC"] <- "Clonal PCs"
+archR$annotation5[archR$annotation1 == "C5 - WM54 Secondary Clone"] <- "Clonal MBC"
+archR$annotation5[archR$annotation1 == "C6 - Clonal MBC Minor Cluster 1"] <- "Clonal MBC"
+archR$annotation5[archR$annotation1 == "C7 - Clonal MBC Minor Cluster 2"] <- "Clonal MBC"
+archR$annotation5[archR$annotation5 == "C1 - Clonal PCs"] <- "Clonal PC"
+archR$annotation5[archR$annotation1 == "C10 - HD Memory B cells"] <- "Reference MBC"
+archR$annotation5[archR$annotation1 == "C11 - HD Plasma cells"] <- "Reference PC"
+archR$annotation5[archR$annotation5 == "C2 - Clonal MBC"] <- "Clonal MBC"
+archR$annotation5[archR$annotation1 == "C4 - Non-clonal MBC"] <- "Non-clonal MBC"
+archR$annotation5[archR$annotation1 == "C8 - HD GC B cells"] <- "Reference GC"
+archR$annotation5[archR$annotation1 == "C9 - HD Naive B cells"] <- "Reference Naive"
+table(archR$annotation5)
+
+plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "tripartite_annotation", embedding = "BLineage_Recluster_UMAP",labelAsFactors = F)
+```
+
+
+```{r}
+patients <- c("01-076", "01-115", "01-131", "01-163", "01-190", "04-003", "04-006",
+              "WM25", "WM43", "WM46", "WM47", "WM54", "WM65")
+
+subtypes <- c("MBC-like", "PC-like", "PC-like", "PC-like", "MBC-like", "PC-like", "PC-like",
+              "PC-like", "PC-like", "MBC-like", "MBC-like", "PC-like", "MBC-like")
+myd88 <- c("+", "+", "+", "+", "+", "+", "+",
+           "+", "+", "+", "+", "+", "+")
+cxcr4 <- c("-", "-", "-", "-", "+", "-", "+",
+           "-", "+", "-", "-", "-", "+")
+arid1a <- c("NT", "NT", "NT", "NT", "NT", "NT", "NT",
+           "-", "-", "-", "+", "-", "-")
+tp53 <- c("NT", "NT", "NT", "NT", "NT", "NT", "NT",
+           "-", "-", "-", "-", "-", "+")
+mll2 <- c("NT", "NT", "NT", "NT", "NT", "NT", "NT",
+           "-", "+", "-", "+", "-", "-")
+hist1h1e <- c("NT", "NT", "NT", "NT", "NT", "NT", "NT",
+           "-", "-", "+", "+", "-", "+")
+
+df <- data.frame(patients, subtypes, myd88, cxcr4, arid1a, tp53, mll2, hist1h1e)
+colnames(df) <- c("Patient", "Subtype", "MYD88", "CXCR4", "ARID1A", "TP53", "MLL2", "HIST1H1E")
+table_caption <- c("Single-cell Patient Characteristics", "Supplementary Table 1")
+head(df)
+
+# Run it
+df.table <- df |>
+  flextable() |>
+  add_header_lines(values = rev(table_caption)) |>
+  padding(padding = 0, part = "all") |>
+  padding(padding.right = 10, part = "all") |>
+  autofit() |>
+  bold(part = "header", i = 1) |>
+  italic(part = "header", i = c(2:length(table_caption))) |>
+  align(part = "header", i = c(1:length(table_caption)), align = "left") |>
+  border(part = "head", i = c(1:length(table_caption)),
+         border = list("width" = 0, color = "black", style = "solid"))
+save_as_docx(df.table, path = "/Users/gagled01/morganLab/Waldenstroms/PatientCharacteristics_SupplementaryTable1.docx", align = "center")
+```
+```{r}
+trust4.df <- read.csv("/Users/gagled01/morganLab/Waldenstroms/TopCloneCDR3_bySample.csv")
+
+# Getting actual values (as opposed to the values computred from the raw matrices)
+cellsKeep <- archR$cellNames[archR$hasTopCDR3 == "Yes"]
+illegal_archR <- archR[cellsKeep,]
+actual_counts <- as.numeric(table(illegal_archR$samplesClean))
+
+cellsKeep2 <- archR$cellNames[archR$condition == "WM"]
+illegal_archR2 <- archR[cellsKeep2,]
+total_cellCounts <- as.numeric(table(illegal_archR2$samplesClean))
+perc_clonal <- actual_counts/total_cellCounts
+
+
+trust4.df$actual_counts <- actual_counts
+trust4.df$actual_percent <- perc_clonal
+
+
+# Final cleaning
+colnames(trust4.df) <- c("Patient", "Top CDR3 sequence", "Number of raw clones", "Proportion of raw clones", 
+                         "V", "D", "J", "Number of actual clones", "Proportion of actual clones")
+trust4.df$D <- "NA"
+table_caption <- c("")
+
+trust4.df <- trust4.df[, c("Patient", "Top CDR3 sequence", "Number of raw clones", "Proportion of raw clones", "Number of actual clones", "Proportion of actual clones", "V", "D", "J")]
+
+# Run it
+df.table <- trust4.df |>
+  flextable() |>
+  add_header_lines(values = rev(table_caption)) |>
+  padding(padding = 0, part = "all") |>
+  padding(padding.right = 10, part = "all") |>
+  autofit() |>
+  bold(part = "header", i = 1) |>
+  italic(part = "header", i = c(2:length(table_caption))) |>
+  align(part = "header", i = c(1:length(table_caption)), align = "left") |>
+  border(part = "head", i = c(1:length(table_caption)),
+         border = list("width" = 0, color = "black", style = "solid"))
+save_as_docx(df.table, path = "/Users/gagled01/morganLab/Waldenstroms/SupplementaryData/SupplementaryTables/TRUST4_Results_SupplementaryTable2.docx", align = "center")
+```
+# Table of cell types. Requires allpatient_df which is made for Fig1 in WM_FinalFigures.Rmd
+# Make table of cell counts and percentages
+```{r}
+library(flextable)
+
+celltype_breakdown <- read.csv("/Users/gagled01/morganLab/Waldenstroms/Patient_CelltypeBreakdown.csv")
+colnames(celltype_breakdown) <- c("Patient", "Clonal PC", "MBC-like MBC", "PC-like MBC", "Polyclonal MBC", "Polyclonal PC", "WM43", "Ref MBC", "Ref PC", "Ref Naive", "Ref GC", "Total")
+
+table_caption <- c("")
+
+head(celltype_breakdown)
+
+# Run it
+df.table <- celltype_breakdown |>
+  flextable() |>
+  add_header_lines(values = rev(table_caption)) |>
+  padding(padding = 0, part = "all") |>
+  padding(padding.right = 10, part = "all") |>
+  autofit() |>
+  #bold(part = "header", i = 1) |>
+  #italic(part = "header", i = c(2:length(table_caption))) |>
+  #align(part = "header", i = c(1:length(table_caption)), align = "left") |>
+  #border(part = "head", i = c(1:length(table_caption)),
+  #       border = list("width" = 0, color = "black", style = "solid"))
+
+
+save_as_docx(df.table, path = "/Users/gagled01/morganLab/Waldenstroms/CelltypeBreakdown_SupplementaryTable3.docx", align = "center")
+```
+

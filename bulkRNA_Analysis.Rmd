@@ -1,6 +1,6 @@
 ---
 title: "Untitled"
-author: "Patrick Blaney"
+author: "Dylan Gagler"
 date: "2024-05-09"
 output: html_document
 ---
@@ -40,16 +40,12 @@ theme_set(
 
 Stage files
 ```{r}
-#setwd("~/morganLab/molecularLandscapeAndTimeOfOriginOfWaldenstrom/data/rnaSeq")
-
 counts_data <- "/Users/gagled01/morganLab/Waldenstroms/Bulk-RNA/wmPatient.quant.featurecounts.counts.unstr.txt"
 extra_data <- "/Users/gagled01/morganLab/Waldenstroms/Bulk-RNA/wmAdditionalPatients.quant.featurecounts.counts.unstr.txt"
 gencode_gene_list = "/Users/gagled01/morganLab/Waldenstroms/Bulk-RNA/gencode.v42.primary_assembly.basic.annotation.gtf.gz"
 
 raw_counts <- read.table(file = counts_data, header = F)
-raw_counts2 <- read.table(file = extra_data, header = F)
 ```
-
 Set colnames
 ```{r}
 colnames(raw_counts) <- read_delim(file = counts_data, 
@@ -70,21 +66,16 @@ colnames(raw_counts2) <- read_delim(file = extra_data,
 raw_counts2 <- tibble::column_to_rownames(raw_counts2,
                                          var = "GENE")
 
-#total_counts <- raw_counts
-total_counts <- cbind(raw_counts, raw_counts2)
+total_counts <- raw_counts
 ```
-
-Set input genes (i.e. remove confounders to clean signal)
+Remove noisy genes
 ```{r}
 gencode_genes <- import(gencode_gene_list)
 gencode_genes <- unique(gencode_genes[gencode_genes$type == "CDS"]$gene_name)
 gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^MT-")]
-
-# TESTING - REMOVE Ig and HLAs
 gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^IG")]
 gencode_genes <- gencode_genes[!str_detect(string = gencode_genes, pattern = "^HLA")]
 ```
-
 Filter low counts
 ```{r}
 total_counts <- total_counts %>%
@@ -101,10 +92,9 @@ total_counts <- total_counts %>%
   dplyr::filter(rowSums(total_counts) / ncol(total_counts) > round(median(per_gene_exp_mean) / 10,
                                                                      digits = 0))
 ```
-
-
+Generate SCE object, normalize, scale, and plot genes of interest
 ```{r}
-# Conversion to single cell experiment data format + log normalization
+# Create SCE object
 sce <- SingleCellExperiment(list(counts = total_counts), 
                             colData = colnames(total_counts),
                             rowData = rownames(total_counts))
@@ -115,44 +105,28 @@ sce <- computeSumFactors(sce)
 # Log normalize relative to pseudo-cell from calculated cell size factors
 sce_log <- logNormCounts(sce)
 
-# Identifying most variable genes
-dec <- modelGeneVar(sce_log)
-#hvgs <- getTopHVGs(dec, n=500)[300:350]
-hvgs <- getTopHVGs(dec, n=50)
-
-#hvgs <- c("SGSM1", "ITGB1", "BANK1", "CD74", "FCHSD2", "FCRL1", "AKT3", "CD24", "AFF3", "SOX5", "PYHIN1", "CD9", "CD38", "SDC1", "CD19",
-#        "JCHAIN", "PRDM1", "PELI1", "MS4A1", "EIF2AK3", "MSI2", "FCRL5", "XBP1", "MZB1", "CD27")
 # Isolate normalized counts from SCE object
 norm_hm <- exprs(sce_log)
-
+```
+Identify genes to plot and plot them
+```{r}
 #scran documentation uses difference between normalized value and row mean as
 # plot value; per creators, expression values are mean-centered for each gene
 # to highlight relative differences between expression in cells
 # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5112579/pdf/f1000research-5-10712.pdf
 hm_plotvals <- (norm_hm - rowMeans(norm_hm)) %>% as.data.frame()
 
-# Ordered gene selection
-ind <- NULL
+# Genes of interest
+gene_list <- c("SGSM1", "ITGB1", "BANK1", "CD74", "FCHSD2", "FCRL1", "AKT3", "CD24", "AFF3", "SOX5", "PYHIN1", "CD9", "CD38", "SDC1", "CD19",
+        "JCHAIN", "PRDM1", "PELI1", "MS4A1", "EIF2AK3", "MSI2", "FCRL5", "XBP1", "MZB1", "CD27")
 
-for (i in 1:length(hvgs)){
-  ind[i] <- which(rownames(hm_plotvals) == hvgs[i])
-}
+# Subset to only include genes of interest
+hm_plotvals <- hm_plotvals[gene_list,]
 
-#Taking normalized plot values for top HVGs
-hm_plotvals <- hm_plotvals[ind,]
-
-pdf(file = "/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure5/SupervistedHeatmap_bulkRNA_Names.pdf", height = 10, width = 12)
-testing <- Heatmap(as.matrix(hm_plotvals), name = "mat", show_column_names = TRUE)
-draw(testing)
-dev.off()
-
-
-pdf(file = "/Users/gagled01/morganLab/Waldenstroms/singlecell/figures/Figure5/SupervistedHeatmap_bulkRNA_Annotated.pdf", height = 10, width = 12)
+# Plot it
 testing <- Heatmap(as.matrix(hm_plotvals), name = "mat", show_column_names = FALSE, top_annotation = HeatmapAnnotation(foo = anno_block(gp = gpar(fill = c("slateblue1", "firebrick3")),
         labels = c("PC-like", "MBC-like"), 
         labels_gp = gpar(col = "white", fontsize = 10))),
     column_km = 2)
 draw(testing)
-dev.off()
-
 ```
