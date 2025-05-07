@@ -8,21 +8,16 @@ Load libraries, set threads, set reference genome, set global size so we don't c
 library(ArchR)
 library(Seurat)
 addArchRThreads(threads = 1)
-#addArchRGenome("hg38")
+addArchRGenome("hg38")
 options(future.globals.maxSize=100000000000000000000000) 
 ```
 Set up fragment files
 ```{r}
-setwd("/Users/gagled01/morganLab/Waldenstroms/singlecell/data/ATAC_fragments/ArchR_ReferenceAdd_Fragments")
+setwd("/Users/gagled01/morganLab/Waldenstroms/singlecell/data/ATAC_fragments")
 
 # hg38 fragment files
 fragments <- list.files(getwd())
-#fragments <- fragments[-c(8)] # exclude the non-fragment files like the R Notebook, etc.
 fragments
-```
-Load existing ArchR project
-```{r}
-archR <- loadArchRProject(path = "/Users/gagled01/morganLab/Waldenstroms/singlecell/data/ATAC_fragments/WM_ReferenceAdd_Unconstrained_Integration_NoGreenleafCOVID_ReclusteredHarmony")
 ```
 Create arrows
 ```{r}
@@ -34,9 +29,6 @@ arrow.files <- createArrowFiles(
   addTileMat = T,
   addGeneScoreMat = T
 )
-
-# In case the arrow files already exist
-#arrow.files <- list.files(pattern = "\\.arrow$")
 ```
 # Doublet inference
 # Doublets are inevitable in single cell data. The % of doublets is proportional to the number of cells loaded into the experiment. 
@@ -58,7 +50,7 @@ dub.scores <- addDoubletScores(
 ```{r}
 archR <- ArchRProject(
   ArrowFiles = arrow.files,
-  outputDirectory = "WM_ReferenceData_Update",
+  outputDirectory = "WM_ArchR",
   copyArrows = F
 )
 ```
@@ -295,55 +287,29 @@ frag2 <- plotGroups(
 frag2
 plotPDF(frag2, name = "QC-Sample-FragSizes-Ridges_BelowTSS10_Removed.pdf", ArchRProj = archR, addDOC = F, width = 5, height = 5)
 ```
-# Subsetting out hg19 files as they caused incompatability issues
+# Subsetting out hg19 reference data as they caused incompatability issues
 ```{r}
 idsKeep <- as.character(archR$cellNames[!(archR$source %in% c("Greenleaf_MAPL"))])
 idsKeep2 <- as.character(idsKeep[archR$samplesClean %in% c("01-190", "04-003") & archR$TSSEnrichment < 8])
-idsKeep3 <- setdiff(idsKeep, idsKeep2) # get cells that exclude both MAPL and the bumps in 01-190 and 04-003
+idsKeep3 <- setdiff(idsKeep, idsKeep2) # get cells that exclude both MAPL and the bumps in 01-190 and 04-003 just to be safe
 
 archR <- subsetArchRProject(ArchRProj = archR,
                    cells = idsKeep3,
-                   outputDirectory = "ArchR_ReferenceAdd_Subset",
+                   outputDirectory = "ArchR_Cleaned",
                    dropCells = TRUE,
                    threads = getArchRThreads(),
                    force = TRUE
 )
 ```
+# Filtering doublets
+# This filters based on a ratio which allows you to apply a consistent filter across different samples with different % of doublets
 # Default ratio is 1
 ```{r}
 archR <- filterDoublets(archR, filterRatio = 1)
 ```
-# Save project out
-# This copies a new set of arrow files and a new ArchRProj to the output dir
-# Unless you specify load = F, this existing project in this R studio will still be the ORIGINAL arrow files
-```{r}
-#saveArchRProject(ArchRProj = archR, outputDirectory = "WM_ReferenceData_Rerun", load = F)
-```
-# Filtering doublets
-# This filters based on a ratio which allows you to apply a consistent filter across different samples with different % of doublets
-
 ############################################
-### CHAPTER 4 - DIMENSIONALITY REDUCTION ###
+########## DIMENSIONALITY REDUCTION ########
 ############################################
-
-# Dimensionality reduction with scATAC-seq data is tough due to data sparsity. A particular site is either accessible on one allele, both, or neither.
-# It ends up that many loci have 0 accessible alleles. As such, you'd be reluctant to say that a cell with 3 insertions in a given site is actually 3x more accessible than another cell with only 1 insertion in the same site. 
-# Many analytical strategies then binarizes their ATAC data matrix to 1s and 0s, which is mostly 0s. But this is still difficult because 0 can mean both non-accessible and not-sampled and these are different things biologically.
-# If you would perform a standard dimensionality reduction like PCA, the first PC would just be all of the 0 positions
-# This is gotten around via a layered dimensionality reduction approach
-# First, we use a Latent Semantic Indexing (LSI) which is borrowed from natural language processing
-# This calculates the peak frequency per cell, normalized by depth.
-# These values are then normalized by the inverse document frequency which weighs features by how often they occur, identifying features that are more specific rather than commonly accessible
-# The resultant term frequency-inverse document frequency (TF-IDF) matrix reflects how important a region/peak is to a sample.
-# Then, through a technique called singular value decomposition (SVD), the most valuable information across samples is identified and represented in a lower dimensional space. Dam
-# Finally, a more conventional dimensionality reduction technique like UMAP can be used to visualize the data
-
-# ArchR offers a few different LSI implementations but by default uses the method introduced in Signac (!), which uses a term frequency that has been depth normalized to 10,000 and again normalized with the log(tf-idf)
-# It is suggested to use genome-wide tiles as the inputs to LSI dimensionality reduction, but these can become prohibitively large. ArchR can do this more rapidly using 500bp tiles...but also offers an "estimated LSI" approach which only uses a subset of total cells, thereby speeding up the process and decreasing granularity of the data, which may end up reducing batch effects in the data
-
-#### Iterative Latent Semantic Indexing (LSI) ####
-# This approach computes an initial LSI transformation on the most accessible tiles and then another on the top variable features from the first iteration. You can repeat this more if necessary
-# LSI is NOT deterministic...so you will not get exactly the same results. So make sure to save the ArchRProject once you have an ideal dimensionality reduction
 ```{r}
 archR <- addIterativeLSI(
   ArchRProj = archR,
@@ -359,55 +325,28 @@ archR <- addIterativeLSI(
   dimsToUse = 1:30,
   force = T
 )
-
-# Rerunning dim red after removing greenleaf COVID samples
-archR <- addIterativeLSI(
-  ArchRProj = archR,
-  useMatrix = "TileMatrix",
-  name = "IterativeLSI_NoGreenleafCOVID",
-  iterations = 2,
-  clusterParams = list( # based on Seurat's FindClusters()
-    resolution = c(0.25),
-    sampleCells = 5000,
-    n.start = 10
-  ),
-  varFeatures = 20000,
-  dimsToUse = 1:30,
-  force = T
-)
-
 ```
 # You can also explicitly correct for batch effect with Harmony
-# See documentation for this. Won't do now because only 1 sample lol
 ####################################
 ### BATCH CORRECTION VIA HARMONY ###
 ####################################
 ```{r}
 # adding batch for full dataset integration
-
 archR$batch <- archR$source
 archR$batch[archR$samplesClean %in% c("01-190", "04-003")] <- "NYU-1"
 archR$batch[archR$samplesClean %in% c("01-076", "01-115", "01-131", "01-163", "04-006")] <- "NYU-2"
 archR$batch[archR$samplesClean %in% c("WM25", "WM43", "WM46", "WM47", "WM54", "WM65")] <- "Gustave-Roussy"
 
-#archR <- addHarmony(
-#    ArchRProj = archR,
-#    reducedDims = "IterativeLSI",
-#    name = "Harmony_Source",
-#    groupBy = "source",
-#    force = T
-#)
-
 archR <- addHarmony(
-    ArchRProj = archR,
-    reducedDims = "IterativeLSI_NoGreenleafCOVID",
-    name = "Harmony_Batch_PostSubbing",
-    groupBy = "batch",
-    force = T
+   ArchRProj = archR,
+   reducedDims = "IterativeLSI",
+   name = "Harmony_Batch",
+   groupBy = "source",
+   force = T
 )
 ```
 ##############################
-### CHAPTER 5 - CLUSTERING ###
+########## CLUSTERING ########
 ##############################
 # ArchR basically just uses Seurat's FindClusters()
 ```{r}
@@ -430,9 +369,8 @@ archR <- addClusters(
 )
 ```
 #####################################
-### CHAPTER 6 - EMBEDDINGS (UMAP) ###
+######### EMBEDDINGS (UMAP) #########
 #####################################
-
 ```{r}
 archR <- addUMAP(
   ArchRProj = archR,
@@ -445,26 +383,6 @@ archR <- addUMAP(
 )
 
 archR <- addUMAP(
-  ArchRProj = archR,
-  reducedDims = "IterativeLSI_NoGreenleafCOVID",
-  name = "UMAP",
-  nNeighbors = 30,
-  minDist = 0.5,
-  metric = "cosine",
-  force = T
-)
-
-archR <- addUMAP(
-    ArchRProj = archR, 
-    reducedDims = "Harmony_Source", 
-    name = "UMAP_Harmony_Source", 
-    nNeighbors = 30, 
-    minDist = 0.5, 
-    metric = "cosine",
-    force = T
-)
-
-archR <- addUMAP(
     ArchRProj = archR, 
     reducedDims = "Harmony_Batch", 
     name = "UMAP_Harmony_Batch", 
@@ -473,105 +391,16 @@ archR <- addUMAP(
     metric = "cosine",
     force = T
 )
-
-archR <- addUMAP(
-    ArchRProj = archR, 
-    reducedDims = "Harmony_Batch_PostSubbing", 
-    name = "UMAP_Harmony_Batch_PostSubbing", 
-    nNeighbors = 30, 
-    minDist = 0.5, 
-    metric = "cosine",
-    force = T
-)
-
-p1 <- plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "samplesClean", embedding = "UMAP")
-p2 <- plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "samplesClean", embedding = "UMAP_Harmony_Batch")
-p3 <- plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "samplesClean", embedding = "UMAP_Harmony_Batch_PostSubbing")
-
-plotPDF(p1, p2, p3, name = "WM_ReferenceAdd_Cleaned_Plot-UMAP-Clusters_BatchCorrectionComparison.pdf", ArchRProj = archR, addDOC = FALSE, width = 5, height = 5)
-
-p1 <- plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "samplesClean", embedding = "UMAP_Harmony_Batch_PostSubbing") #+ 
-p2 <- plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "condition", embedding = "UMAP_Harmony_Batch_PostSubbing")
-p3 <- plotEmbedding(ArchRProj = archR, colorBy = "cellColData", name = "predictedGroup_Un", embedding = "UMAP_Harmony_Batch_PostSubbing")
-plotPDF(p1, p2, p3, name = "WM_ReferenceAdd_Cleaned_Plot-UMAP-Clusters_GeneralMetadata.pdf", ArchRProj = archR, addDOC = FALSE, width = 5, height = 5)
-
-temp <- read.table("/Users/gagled01/morganLab/Waldenstroms/TRUST4_working/outputs/bam_reports/01-076_report.tsv", sep = "\t")
-head(temp)
 ```
-Saving it out
-```{r}
-saveArchRProject(ArchRProj = archR, outputDirectory = "WM_ReferenceAdd_Unintegrated", load = T)
-```
-################################################
-### CHAPTER 7 - GENE SCORES AND MARKER GENES ###
-################################################
 # Marker gene inputation with MAGIC to improve UMAPs
 ```{r}
 archR <- addImputeWeights(archR)
-
-markerGenes <- c("PAX5", "MS4A1", "MUM1", "CD27", "BCL6", "SDC1", "CD38", "CD24", "CD19")
-
-p <- plotEmbedding(
-    ArchRProj = archR, 
-    colorBy = "GeneScoreMatrix", 
-    name = markerGenes, 
-    embedding = "UMAP",
-    imputeWeights = getImputeWeights(archR)
-)
-
-p$PAX5
-p$BCL6
-p$MUM1
-p$MS4A1 # MS4A1 = CD20
-p$CD27
-p$SDC1 # SDC1 = CD138
-p$CD38
-
-p2 <- lapply(p, function(x){
-    x + guides(color = FALSE, fill = FALSE) + 
-    theme_ArchR(baseSize = 6.5) +
-    theme(plot.margin = unit(c(0, 0, 0, 0), "cm")) +
-    theme(
-        axis.text.x=element_blank(), 
-        axis.ticks.x=element_blank(), 
-        axis.text.y=element_blank(), 
-        axis.ticks.y=element_blank()
-    )
-})
-do.call(cowplot::plot_grid, c(list(ncol = 2),p))
-
-p2
-plotPDF(plotList = p2, 
-    name = "Plot-UMAP-Marker-Genes-W-Imputation_noBC.pdf", 
-    ArchRProj = archR, 
-    addDOC = FALSE, width = 5, height = 5)
-```
-######################## KEY FIGURE ALERT!!!? ###########################
-### Plotting Tracks of local chromatin accessibilty for marker genes ###
-########################################################################
-```{r}
-p <- plotBrowserTrack(
-    ArchRProj = archR, 
-    groupBy = "Clusters", 
-    geneSymbol = markerGenes, 
-    upstream = 50000,
-    downstream = 50000
-)
-
-plotPDF(plotList = p, 
-    name = "Plot-Tracks-Marker-Genes.pdf", 
-    ArchRProj = archR, 
-    addDOC = FALSE, width = 5, height = 5)
 ```
 ##########################################
-### CHAPTER 8 - ALIGNING TO SCRNA DATA ###
+######### INTEGRATION WITH SCRNA DATA ####
 ##########################################
-Subsetting archR project so that there is no mismatch in number of cells between harmony reduction and base object. Necessary for integration to work
+Subsetting archR project so that there is no mismatch in number of cells between harmony reduction and base object
 ```{r}
-##############################################################
-####################### SOLUTION 1!!!! #######################
-##############################################################
-
 # make sure that the length of your reduced dimension (Harmony in particular) is not different from the size of your ArchR object. if so, subset properly
 rd <- getReducedDims(archR, reducedDims = 'Harmony_Batch', dimsToUse = 1:30)
 length(rownames(rd))
@@ -581,43 +410,19 @@ subcell = rownames(rd)[rownames(rd) %in% archR$cellNames]
 archR.sub = subsetArchRProject(
       ArchRProj = archR,
       cells = rownames(rd),
-      outputDirectory = "ArchRSubset_Again",
+      outputDirectory = "ArchR_Subset_Again",
       dropCells = TRUE,
       logFile = NULL,
       threads = getArchRThreads(),
       force = TRUE
 )
-
-##############################################################
-####################### SOLUTION 2!!!! #######################
-##############################################################
-
-# Downsampling ArchR object - aka solution to everything fuckin CRASHING!!!
-# Ended up just removing the Greenleaf COVID samples to get it to run...that dataset was huge (250k cells) and only a handful of them were memory B cells...but still it's sad we don't have them
-
-#greenleaf.cells <- archR$cellNames[archR$source == "Greenleaf_COVID"]
-#greenleaf.subsample <- sample(greenleaf.cells, 60000, replace = F)
-
-healthy.cells <- archR$cellNames[archR$source %in% c("QMUL", "Stanford")]
-wm.cells <- archR$cellNames[archR$condition == "WM"]
-cellsKeep <- c(wm.cells, healthy.cells)
-length(cellsKeep)
-
-archR.double.sub <- subsetArchRProject(ArchRProj = archR,
-                   cells = cellsKeep,
-                   outputDirectory = "ArchR_ReferenceAdd_Downsampled_NoGreenleafCOVID",
-                   dropCells = TRUE,
-                   threads = getArchRThreads(),
-                   force = TRUE
-)
 ```
-Aligns ATAC gene score matrix to scRNA GEX matrix. Basically just finds the scRNA cell that looks most similar to each scATAC cell.
-ArchR accepts Seurat objects
+ArchR's integration works by aligning ATAC gene score matrix to scRNA GEX matrix. Basically just finds the scRNA cell that looks most similar to each scATAC cell.
 # Load in Seurat object
 ```{r}
-seurat <- readRDS("/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/scRNA_SCTransformIntegrated_CTAnnotated_ReferenceAdd_Regress_Unfiltered.rds")
+seurat <- readRDS("/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/scRNA_SCTransformIntegrated_CTAnnotated.rds")
 ```
-# This is an Unconstrained Integration method
+# Using unconstrained integration approach (which must be done prior to doing the constrained approach)
 ```{r}
 seurat@meta.data$cellnames <- colnames(seurat)
 
@@ -673,11 +478,7 @@ p3 <- plotEmbedding(
 
 plotPDF(p1, p2,p3, name = "WM-Integrated_CellTypistAnnotated_UnConstrainedIntegration_UMAPs_ReferenceAdd.pdf", ArchRProj = archR, addDOC = FALSE, width = 5, height = 5)
 ```
-Save out no controls
-```{r}
-saveArchRProject(ArchRProj = archR, outputDirectory = "WM_ReferenceAdd_Unconstrained_Integration_NoGreenleafCOVID_ReclusteredHarmony", load = F)
-```
-# Subset out the non B cells which originate from the Greenleaf tonsil study (aka healthy references)
+# Subset out the non B cells which originate from the Greenleaf tonsil study (aka healthy references) and saving out object
 ```{r}
 table(archR$predictedGroup_Un)
 
@@ -688,132 +489,10 @@ length(cellsKeep)
 
 archR.B.cells <- subsetArchRProject(ArchRProj = archR,
                    cells = cellsKeep,
-                   outputDirectory = "ArchR_ReferenceAdd_B-LineageOnly",
+                   outputDirectory = "ArchR_B-LineageOnly",
                    dropCells = TRUE,
                    threads = getArchRThreads(),
                    force = TRUE
 )
-```
-
-# And this is the constrained integration method, which depends on the output of the unconstrained. In our case, I don't think we need this...but we can pretend we're only interested in Plasma cells and memory B cells. and Naive, for good measure.
-```{r}
-table(archR$predictedGroup_Un)
-
-cM <- as.matrix(confusionMatrix(archR$Clusters, archR$predictedGroup_Un))
-preClust <- colnames(cM)[apply(cM, 1 , which.max)]
-cbind(preClust, rownames(cM)) #Assignments
-
-unique(unique(archR$predictedGroup_Un))
-
-# selecting clusters that were assigned memory B or PC
-cTNK <- paste0(c("Memory B cells", "Plasma cells"), collapse="|")
-
-# and the rest
-#cNonTNK <- paste0(c("Age-associated B cells", "Germinal center B cells", "Large pre-B cells", "Naive B cells",
-#                    "Plasmablasts", "Pro-B cells", "Proliferative germinal center B cells", "Small pre-B cells"), collapse="|")
-cNonTNK <- paste0(c("Age-associated B cells", "Large pre-B cells", "Non-classical monocytes", "Regulatory T cells", "Tem/Trm cytotoxic T cells",
-                    "CD16+ NK cells", "Memory B cells", "pDC", "Small pre-B cells", "Classical monocytes", "Mid erythroid", "Plasma cells", "Tcm/Naive cytotoxic T cells",
-                    "Germinal center B cells", "Naive B cells", "Pro-B cells", "Tcm/Naive helper T cells", "HSC/MPP", "NK cells", "Proliferative germinal center B cells",
-                    "Tem/Temra cytotoxic T cells"), collapse="|")
-cNonTNK
-
-#Assign scATAC to these categories
-clustTNK <- rownames(cM)[grep(cTNK, preClust)]
-clustTNK
-
-clustNonTNK <- rownames(cM)[grep(cNonTNK, preClust)]
-clustNonTNK
-
-# get cells in these categories
-rnaTNK <- colnames(seurat)[grep(cTNK, seurat@meta.data$majority_voting)]
-
-rnaNonTNK <- colnames(seurat)[grep(cNonTNK, seurat@meta.data$majority_voting)]
-
-groupList <- SimpleList(
-    TNK = SimpleList(
-        ATAC = archR$cellNames[archR$Clusters %in% clustTNK],
-        RNA = rnaTNK
-    ),
-    NonTNK = SimpleList(
-        ATAC = archR$cellNames[archR$Clusters %in% clustNonTNK],
-        RNA = rnaNonTNK
-    )    
-)
-
-#~5 minutes. lol PSYCH!!!! like 5 hours
-archR <- addGeneIntegrationMatrix(
-    ArchRProj = archR, 
-    useMatrix = "GeneScoreMatrix",
-    matrixName = "GeneIntegrationMatrix",
-    reducedDims = "Harmony_Batch",
-    seRNA = seurat,
-    addToArrow = TRUE, 
-    sampleCellsATAC = 8000,
-    sampleCellsRNA = 8000,
-    groupList = groupList,
-    groupRNA = "majority_voting",
-    nameCell = "predictedCell_Co",
-    nameGroup = "predictedGroup_Co",
-    nameScore = "predictedScore_Co",
-    force = TRUE,
-    k.score = 15,
-    k.filter = 150 # lowering from 30 to 15 to try to get it to run
-)
-
-
-p1 <- plotEmbedding(
-    archR, 
-    colorBy = "cellColData", 
-    name = "predictedGroup_Co",
-    embedding = "UMAP_Harmony_Batch"
-)
-p1
-
-p2 <- plotEmbedding(
-    archR, 
-    colorBy = "cellColData", 
-    name = "samplesClean",
-    embedding = "UMAP_Harmony_Batch"
-)
-
-plotPDF(p1,p2, name = "WM_BothSetsNoControls_rPCA-Integrated_CellTypistAnnotated_ConstrainedIntegrationUMAPs.pdf", ArchRProj = archR, addDOC = FALSE, width = 5, height = 5)
-```
-
-# Plotting UMAPs overlayed with the  gene expression values from our integrated matrix
-```{r}
-#archR <- addImputeWeights(archR)
-
-markerGenes <- c("PAX5", "MS4A1", "CD27", "BCL6", "SDC1", "CD38", "CD24", "CD19")
-#markerGenes <- c("CD19", "MS4A1", "MME", "CD5", "CD45", "CD23", "CD38", "CD25", "CD11c", "CD103")
-markerGenes <- c("CD19", "MS4A1", "MME", "CD5", "PTPRC", "FCER2", "CD38", "IL2RA", "ITGAX", "ITGAE")
-# Treon 2014 paper on SPIB and plasma cell differentiation in WM
-#markerGenes <- c("SPIB", "POU2F1", "POU2F2", "XBP1", "IRF4", "PRDM1", "ID2", "BCL6", "PAX5", "SP1", "SP3", "EGR1")
-
-p1 <- plotEmbedding(
-    ArchRProj = archR, 
-    colorBy = "GeneIntegrationMatrix", 
-    name = markerGenes, 
-    continuousSet = "horizonExtra",
-    embedding = "UMAP_Harmony_Batch",
-    imputeWeights = getImputeWeights(archR)
-)
-
-#Same plots but overlain with gene scores
-p2 <- plotEmbedding(
-    ArchRProj = archR,
-    colorBy = "GeneScoreMatrix",
-    continuousSet = "horizonExtra",
-    name = markerGenes,
-    embedding = "UMAP_Harmony_Batch",
-    imputeWeights = getImputeWeights(archR)
-)
-p2
-
-plotPDF(plotList = p1, p2, 
-    name = "Plot-UMAP-Marker-Genes-RNA-W-Imputation_Integrated_GEX_GeneScores.pdf", 
-    ArchRProj = archR, 
-    addDOC = FALSE, width = 5, height = 5)
-
-
 ```
 
