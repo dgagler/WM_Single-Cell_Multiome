@@ -79,7 +79,6 @@ p04.006.ids <- BiocGenerics::which(archR$samplesClean %in% "04-006")
 p04.006.celltypes <- archR$predictedGroup_Un[p04.006.ids]
 
 ############### GUSTAVE ROUSSY SAMPLES
-
 wm25.ids <- BiocGenerics::which(archR$samplesClean %in% "WM25")
 wm25.celltypes <- archR$predictedGroup_Un[wm25.ids]
 wm43.ids <- BiocGenerics::which(archR$samplesClean %in% "WM43")

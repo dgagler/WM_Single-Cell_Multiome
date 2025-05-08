@@ -247,7 +247,7 @@ p2 <- plotEmbedding(archR, embedding = "BLineage_Recluster_UMAP", name = "hasTop
 
 plotPDF(p1, p2, name = "Blineage_Recluster_TopCDR3_UMAP", width = 5, height = 5, ArchRProj = archR, addDOC = FALSE)
 ```
-SAVE IT OUT!!!
+SAVE IT OUT!
 ```{r}
 saveArchRProject(ArchRProj = archR, outputDirectory = "WM_2024_PeaksChromVarTRUST4", load = F)
 ```

@@ -20,7 +20,6 @@ options(future.globals.maxSize=1000000000000000000) # Set max global size so we 
 ```{r}
 h5 <- readH5AD("/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/scRNA_SCTransformed_Integrated_CellTypistAnnotated.h5ad", verbose = TRUE)
 celltypist.object <- as.Seurat(h5, counts = "X", data = NULL)
-
 scrna.object <- readRDS("/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/scRNA_SCTransformed_Integrated.rds")
 ```
 # Fix possible cell mismatches and assign new celltype variables

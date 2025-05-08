@@ -17,7 +17,6 @@ setwd("/Users/gagled01/morganLab/Waldenstroms/singlecell/data/ATAC_fragments")
 
 # hg38 fragment files
 fragments <- list.files(getwd())
-fragments
 ```
 Create arrows
 ```{r}

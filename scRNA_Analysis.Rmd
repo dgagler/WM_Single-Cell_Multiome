@@ -513,7 +513,6 @@ Integration with Seurat SCTransform. As per - https://satijalab.org/seurat/artic
 Involves running SCTransform on filtered ctrl data, then on WM data. Then selecting integration anchors, finding integration anchors, and integrating.
 Had some serious difficulty getting FindIntegrationAnchors to run. Ultimately had to run "rpca" reduction AND specify the dims to use to match those used in SCTransform
 ########################################################################################################################################################################################################
-
 Load libraries
 ```{r}
 library(Seurat)
@@ -572,7 +571,6 @@ saveRDS(integrated, "/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/s
 ########################################################################################################################################################################################################
 ######## Generating outputs (matrix, cell names, and gene names) for use in CellTypist from just generated object #######
 ########################################################################################################################################################################################################
-
 ```{r}
 # Read in Seurat object
 integrated <- readRDS("/Users/gagled01/morganLab/Waldenstroms/singlecell/objects/scRNA_SCTransformed_Integrated.rds")

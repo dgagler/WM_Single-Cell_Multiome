@@ -37,13 +37,11 @@ theme_set(
     )
 )
 ```
-
 Stage files
 ```{r}
 counts_data <- "/Users/gagled01/morganLab/Waldenstroms/Bulk-RNA/wmPatient.quant.featurecounts.counts.unstr.txt"
 extra_data <- "/Users/gagled01/morganLab/Waldenstroms/Bulk-RNA/wmAdditionalPatients.quant.featurecounts.counts.unstr.txt"
 gencode_gene_list = "/Users/gagled01/morganLab/Waldenstroms/Bulk-RNA/gencode.v42.primary_assembly.basic.annotation.gtf.gz"
-
 raw_counts <- read.table(file = counts_data, header = F)
 ```
 Set colnames
